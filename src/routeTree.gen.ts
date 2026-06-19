@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiVisionExtractRouteImport } from './routes/api/vision.extract'
 import { Route as ApiBhashiniAsrRouteImport } from './routes/api/bhashini.asr'
@@ -16,6 +17,11 @@ import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
 import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
 import { Route as ApiAgentResumeRouteImport } from './routes/api/agent.resume'
 
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,6 +55,7 @@ const ApiAgentResumeRoute = ApiAgentResumeRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
@@ -76,6 +85,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/app'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
@@ -84,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/app'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
@@ -92,6 +103,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/app'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
@@ -101,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
   ApiAgentTurnRoute: typeof ApiAgentTurnRoute
@@ -110,6 +123,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -157,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,
   ApiAgentTurnRoute: ApiAgentTurnRoute,
