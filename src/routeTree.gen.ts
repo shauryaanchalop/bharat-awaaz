@@ -9,38 +9,127 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiVisionExtractRouteImport } from './routes/api/vision.extract'
+import { Route as ApiBhashiniAsrRouteImport } from './routes/api/bhashini.asr'
+import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
+import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
+import { Route as ApiAgentResumeRouteImport } from './routes/api/agent.resume'
 
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVisionExtractRoute = ApiVisionExtractRouteImport.update({
+  id: '/api/vision/extract',
+  path: '/api/vision/extract',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBhashiniAsrRoute = ApiBhashiniAsrRouteImport.update({
+  id: '/api/bhashini/asr',
+  path: '/api/bhashini/asr',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentTurnRoute = ApiAgentTurnRouteImport.update({
+  id: '/api/agent/turn',
+  path: '/api/agent/turn',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentStreamRoute = ApiAgentStreamRouteImport.update({
+  id: '/api/agent/stream',
+  path: '/api/agent/stream',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentResumeRoute = ApiAgentResumeRouteImport.update({
+  id: '/api/agent/resume',
+  path: '/api/agent/resume',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/api/agent/resume': typeof ApiAgentResumeRoute
+  '/api/agent/stream': typeof ApiAgentStreamRoute
+  '/api/agent/turn': typeof ApiAgentTurnRoute
+  '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/api/agent/resume': typeof ApiAgentResumeRoute
+  '/api/agent/stream': typeof ApiAgentStreamRoute
+  '/api/agent/turn': typeof ApiAgentTurnRoute
+  '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRoute
+  '/api/agent/resume': typeof ApiAgentResumeRoute
+  '/api/agent/stream': typeof ApiAgentStreamRoute
+  '/api/agent/turn': typeof ApiAgentTurnRoute
+  '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/api/agent/resume'
+    | '/api/agent/stream'
+    | '/api/agent/turn'
+    | '/api/bhashini/asr'
+    | '/api/vision/extract'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/app'
+    | '/api/agent/resume'
+    | '/api/agent/stream'
+    | '/api/agent/turn'
+    | '/api/bhashini/asr'
+    | '/api/vision/extract'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/api/agent/resume'
+    | '/api/agent/stream'
+    | '/api/agent/turn'
+    | '/api/bhashini/asr'
+    | '/api/vision/extract'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRoute
+  ApiAgentResumeRoute: typeof ApiAgentResumeRoute
+  ApiAgentStreamRoute: typeof ApiAgentStreamRoute
+  ApiAgentTurnRoute: typeof ApiAgentTurnRoute
+  ApiBhashiniAsrRoute: typeof ApiBhashiniAsrRoute
+  ApiVisionExtractRoute: typeof ApiVisionExtractRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +137,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/vision/extract': {
+      id: '/api/vision/extract'
+      path: '/api/vision/extract'
+      fullPath: '/api/vision/extract'
+      preLoaderRoute: typeof ApiVisionExtractRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/bhashini/asr': {
+      id: '/api/bhashini/asr'
+      path: '/api/bhashini/asr'
+      fullPath: '/api/bhashini/asr'
+      preLoaderRoute: typeof ApiBhashiniAsrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/turn': {
+      id: '/api/agent/turn'
+      path: '/api/agent/turn'
+      fullPath: '/api/agent/turn'
+      preLoaderRoute: typeof ApiAgentTurnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/stream': {
+      id: '/api/agent/stream'
+      path: '/api/agent/stream'
+      fullPath: '/api/agent/stream'
+      preLoaderRoute: typeof ApiAgentStreamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/resume': {
+      id: '/api/agent/resume'
+      path: '/api/agent/resume'
+      fullPath: '/api/agent/resume'
+      preLoaderRoute: typeof ApiAgentResumeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRoute,
+  ApiAgentResumeRoute: ApiAgentResumeRoute,
+  ApiAgentStreamRoute: ApiAgentStreamRoute,
+  ApiAgentTurnRoute: ApiAgentTurnRoute,
+  ApiBhashiniAsrRoute: ApiBhashiniAsrRoute,
+  ApiVisionExtractRoute: ApiVisionExtractRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
