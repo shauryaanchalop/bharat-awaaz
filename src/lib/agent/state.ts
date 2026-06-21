@@ -51,12 +51,33 @@ export type GrievanceDraft = {
     state?: string;
     district?: string;
     contact_phone?: string;
+    contact_email?: string;
   };
-  status: "draft" | "ready" | "submitted" | "failed";
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
   regId?: string;
   createdAt: number;
   submittedAt?: number;
   lastError?: string;
+  attempts: number;
+  lastAttemptAt?: number;
+  validationIssues?: { field: string; message: string }[];
+};
+
+export type CustomTemplateField = {
+  key: string;
+  label: string;
+  required?: boolean;
+  aliases?: string[];
+  source?: "aadhaar" | "ration" | "income" | "demographics" | "user";
+};
+
+export type CustomTemplate = {
+  id: string;
+  name: string;
+  ministry: string;
+  scheme: string;
+  fields: CustomTemplateField[];
+  createdAt: number;
 };
 
 export type AgentEvent =
