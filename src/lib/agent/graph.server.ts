@@ -212,15 +212,19 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
       execute: async (payload) => {
         const block = isOutOfPurview(payload.description);
         if (block) return { ok: false, error: `Out of CPGRAMS purview (${block}).` };
+        const { validateCpgramsPayload } = await import("../cpgrams/schema");
+        const validation = validateCpgramsPayload(payload);
         const draft: GrievanceDraft = {
           draftId: "gd_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           payload,
-          status: "ready",
+          status: validation.ok ? "ready" : "draft",
           createdAt: Date.now(),
+          attempts: 0,
+          validationIssues: validation.ok ? undefined : validation.issues,
         };
         updateSession(sessionId, (s) => s.grievanceDrafts.push(draft));
         emit(sessionId, { type: "grievance_draft", draft });
-        return { ok: true, draftId: draft.draftId };
+        return { ok: true, draftId: draft.draftId, validationOk: validation.ok, issues: validation.ok ? [] : validation.issues };
       },
     }),
 
