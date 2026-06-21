@@ -1,6 +1,8 @@
 // CPGRAMS structured complaint submission.
-// Production access is government-restricted; without a real key we draft and
-// return a clearly-marked stub registration ID for demo purposes.
+// Without a real key, calls throw a typed error so the draft stays pending
+// in the queue and is auto-resent the moment CPGRAMS_API_KEY arrives.
+
+import { validateCpgramsPayload } from "./schema";
 
 export type GrievancePayload = {
   applicant_name: string;
@@ -16,59 +18,79 @@ export type GrievancePayload = {
 
 export type GrievanceResult = {
   regId: string;
-  source: "cpgrams" | "draft";
+  source: "cpgrams";
   acknowledgement: string;
 };
 
+export class CpgramsKeyMissingError extends Error {
+  code = "CPGRAMS_KEY_MISSING" as const;
+  constructor() {
+    super("CPGRAMS_API_KEY not configured — draft kept pending in the auto-resend queue.");
+  }
+}
+
+export class CpgramsTimeoutError extends Error {
+  code = "CPGRAMS_TIMEOUT" as const;
+  constructor() {
+    super("CPGRAMS upstream timed out — draft re-queued for automatic retry.");
+  }
+}
+
+export class CpgramsValidationError extends Error {
+  code = "CPGRAMS_VALIDATION" as const;
+  issues: { field: string; message: string }[];
+  constructor(issues: { field: string; message: string }[]) {
+    super("Payload failed strict CPGRAMS schema validation.");
+    this.issues = issues;
+  }
+}
+
 const ENDPOINT = process.env.CPGRAMS_API_URL ?? "https://pgportal.gov.in/api/grievance/lodge";
 
-const DISALLOWED_KEYWORDS = [
-  "subjudice",
-  "subjudice court",
-  "rti",
-  "right to information",
-  "religious",
-];
+const DISALLOWED_KEYWORDS = ["subjudice", "subjudice court", "rti", "right to information", "religious"];
 
 export function isOutOfPurview(description: string): string | null {
-  const lower = description.toLowerCase();
+  const lower = (description ?? "").toLowerCase();
   for (const k of DISALLOWED_KEYWORDS) if (lower.includes(k)) return k;
   return null;
 }
 
-export async function fileGrievance(payload: GrievancePayload): Promise<GrievanceResult> {
+export function cpgramsConfigured() {
+  return !!process.env.CPGRAMS_API_KEY;
+}
+
+export async function fileGrievance(payload: GrievancePayload, opts: { timeoutMs?: number } = {}): Promise<GrievanceResult> {
   const block = isOutOfPurview(payload.description);
-  if (block) {
-    throw new Error(
-      `This grievance topic ("${block}") falls outside the CPGRAMS purview and cannot be filed through this channel.`,
-    );
-  }
+  if (block) throw new Error(`Out of CPGRAMS purview ("${block}").`);
+
+  const validation = validateCpgramsPayload(payload);
+  if (!validation.ok) throw new CpgramsValidationError(validation.issues);
 
   const apiKey = process.env.CPGRAMS_API_KEY;
-  if (!apiKey) {
-    // Draft mode — generate a deterministic-looking stub id.
-    const stub = "DRAFT/" + Date.now().toString(36).toUpperCase() + "/" + Math.random().toString(36).slice(2, 6).toUpperCase();
-    return {
-      regId: stub,
-      source: "draft",
-      acknowledgement:
-        "Grievance drafted locally. Connect CPGRAMS_API_KEY to file with the live national portal.",
-    };
-  }
+  if (!apiKey) throw new CpgramsKeyMissingError();
 
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`CPGRAMS error ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { registrationNumber?: string; regId?: string; message?: string };
-  return {
-    regId: data.registrationNumber ?? data.regId ?? "UNKNOWN",
-    source: "cpgrams",
-    acknowledgement: data.message ?? "Grievance registered with CPGRAMS.",
-  };
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 15000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify(validation.data),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`CPGRAMS error ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { registrationNumber?: string; regId?: string; message?: string };
+    return {
+      regId: data.registrationNumber ?? data.regId ?? "UNKNOWN",
+      source: "cpgrams",
+      acknowledgement: data.message ?? "Grievance registered with CPGRAMS.",
+    };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new CpgramsTimeoutError();
+    if (e instanceof Error && /aborted/i.test(e.message)) throw new CpgramsTimeoutError();
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
