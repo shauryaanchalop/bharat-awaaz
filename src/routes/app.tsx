@@ -36,10 +36,13 @@ type GrievanceDraft = {
     state?: string;
     district?: string;
     contact_phone?: string;
+    contact_email?: string;
   };
-  status: "draft" | "ready" | "submitted" | "failed";
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
   regId?: string;
   lastError?: string;
+  attempts?: number;
+  validationIssues?: { field: string; message: string }[];
 };
 
 type AgentEvent =
@@ -66,7 +69,16 @@ type Scheme = {
 
 type Msg = { role: "user" | "assistant"; text: string; lang?: string; audioUrl?: string };
 
-type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number };
+type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number; custom?: boolean };
+
+type ValidationRecord = {
+  id: string;
+  templateId: string;
+  confirmedAt?: number;
+  proposed: FieldProposal[];
+  final: Record<string, string>;
+  changes: { field: string; from: string; to: string }[];
+};
 
 function newSessionId() {
   return "s_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -96,15 +108,50 @@ function AppPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [selectedTpl, setSelectedTpl] = useState<string>("");
   const [mockVoice, setMockVoice] = useState(false);
+  const [validationHistory, setValidationHistory] = useState<ValidationRecord[]>([]);
+  const [cpgramsReady, setCpgramsReady] = useState(false);
+  const [showTplBuilder, setShowTplBuilder] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load templates
-  useEffect(() => {
-    fetch("/api/templates")
+  const loadTemplates = useCallback(() => {
+    fetch(`/api/templates?sessionId=${sessionId}`)
       .then((r) => r.json())
       .then((d: { templates: TemplateMeta[] }) => setTemplates(d.templates));
-  }, []);
+  }, [sessionId]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  // Poll auto-resend queue: drains pending drafts the moment CPGRAMS_API_KEY arrives.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/grievance/draft?sessionId=${sessionId}`);
+        const d = (await r.json()) as {
+          drafts: GrievanceDraft[];
+          cpgramsConfigured: boolean;
+          autoResend: { drained: number; attempted: number };
+        };
+        if (cancelled) return;
+        setCpgramsReady(d.cpgramsConfigured);
+        setDrafts(d.drafts);
+        if (d.autoResend.drained > 0) {
+          setError(null);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [sessionId]);
 
   // SSE
   useEffect(() => {
@@ -190,6 +237,15 @@ function AppPage() {
   const confirmValidation = useCallback(
     async (fields: Record<string, string>, changes: { field: string; from: string; to: string }[]) => {
       if (!pendingValidation) return;
+      const record: ValidationRecord = {
+        id: pendingValidation.id,
+        templateId: pendingValidation.templateId,
+        confirmedAt: Date.now(),
+        proposed: pendingValidation.proposed,
+        final: fields,
+        changes,
+      };
+      setValidationHistory((h) => [...h, record]);
       await fetch("/api/agent/resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,7 +268,7 @@ function AppPage() {
       await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, templateId: id }),
+        body: JSON.stringify({ action: "select", sessionId, templateId: id }),
       });
       const tpl = templates.find((x) => x.id === id);
       if (tpl) sendText(`Use the ${tpl.name} (template id: ${id}) for my application. Propose the filled form for me to validate.`);
@@ -227,7 +283,7 @@ function AppPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "submit", sessionId, draftId }),
       });
-      const d = (await r.json()) as { ok: boolean; result?: { regId: string }; error?: string };
+      const d = (await r.json()) as { ok: boolean; regId?: string; error?: string; status?: string };
       if (!d.ok) setError(d.error ?? "Submit failed");
     },
     [sessionId],
@@ -239,13 +295,35 @@ function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "retry-all", sessionId }),
     });
-    const d = (await r.json()) as {
-      ok: boolean;
-      results: { draftId: string; ok: boolean; regId?: string; error?: string }[];
-    };
-    const fails = d.results.filter((x) => !x.ok);
-    if (fails.length) setError(`${fails.length} draft(s) still failing — likely API key not yet active.`);
+    const d = (await r.json()) as { ok: boolean; drained: number; attempted: number };
+    if (d.attempted > 0 && d.drained < d.attempted) {
+      setError(`${d.attempted - d.drained} draft(s) still pending — CPGRAMS key not active yet.`);
+    }
   }, [sessionId]);
+
+  const registerTemplate = useCallback(
+    async (template: {
+      id: string;
+      name: string;
+      ministry: string;
+      scheme: string;
+      fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[];
+    }) => {
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "register", sessionId, template }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string };
+      if (!d.ok) {
+        setError(d.error ?? "Template registration failed");
+        return false;
+      }
+      loadTemplates();
+      return true;
+    },
+    [sessionId, loadTemplates],
+  );
 
   return (
     <div className="min-h-screen pb-32">
@@ -308,7 +386,16 @@ function AppPage() {
           )}
 
           {drafts.length > 0 && (
-            <GrievanceDrafts drafts={drafts} onSubmit={submitDraft} onRetryAll={retryAllDrafts} />
+            <GrievanceDrafts
+              drafts={drafts}
+              onSubmit={submitDraft}
+              onRetryAll={retryAllDrafts}
+              cpgramsReady={cpgramsReady}
+            />
+          )}
+
+          {validationHistory.length > 0 && (
+            <ValidationHistory records={validationHistory} sessionId={sessionId} />
           )}
 
           {schemes.length > 0 && <SchemesList schemes={schemes} />}
@@ -322,7 +409,17 @@ function AppPage() {
             value={selectedTpl}
             onChange={onTemplateChange}
             disabled={thinking || !!pendingValidation}
+            onAddNew={() => setShowTplBuilder(true)}
           />
+          {showTplBuilder && (
+            <TemplateBuilder
+              onSave={async (tpl) => {
+                const ok = await registerTemplate(tpl);
+                if (ok) setShowTplBuilder(false);
+              }}
+              onCancel={() => setShowTplBuilder(false)}
+            />
+          )}
           <DocumentUpload sessionId={sessionId} onUploaded={(d) => setDocs((x) => [...x, d])} />
           {docs.length > 0 && <DocsPanel docs={docs} />}
           <Tip text={t.sub} />
@@ -494,34 +591,50 @@ function GrievanceDrafts({
   drafts,
   onSubmit,
   onRetryAll,
+  cpgramsReady,
 }: {
   drafts: GrievanceDraft[];
   onSubmit: (id: string) => void;
   onRetryAll: () => void;
+  cpgramsReady: boolean;
 }) {
   const pending = drafts.filter((d) => d.status !== "submitted");
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Grievance drafts ({drafts.length})
         </div>
-        {pending.length > 0 && (
-          <button
-            onClick={onRetryAll}
-            className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/70"
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+              cpgramsReady ? "bg-green-500/15 text-green-700" : "bg-amber-500/15 text-amber-700"
+            }`}
+            title={
+              cpgramsReady
+                ? "CPGRAMS_API_KEY is configured — drafts will auto-submit."
+                : "Waiting for CPGRAMS_API_KEY — pending drafts auto-submit the moment it arrives."
+            }
           >
-            ↻ Retry all
-          </button>
-        )}
+            CPGRAMS {cpgramsReady ? "live" : "pending"}
+          </span>
+          {pending.length > 0 && (
+            <button
+              onClick={onRetryAll}
+              className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/70"
+            >
+              ↻ Retry now
+            </button>
+          )}
+        </div>
       </div>
       <ul className="space-y-3">
         {drafts.map((d) => (
           <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-semibold">{d.payload.subject}</div>
-                <div className="text-xs text-muted-foreground">
+              <div className="min-w-0">
+                <div className="truncate font-semibold">{d.payload.subject}</div>
+                <div className="truncate text-xs text-muted-foreground">
                   {d.payload.ministry_or_department} · {d.payload.applicant_name}
                 </div>
               </div>
@@ -531,32 +644,57 @@ function GrievanceDrafts({
                     ? "bg-green-500/15 text-green-700"
                     : d.status === "failed"
                       ? "bg-destructive/15 text-destructive"
-                      : "bg-amber-500/15 text-amber-700"
+                      : d.status === "pending_key"
+                        ? "bg-blue-500/15 text-blue-700"
+                        : d.status === "draft"
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-amber-500/15 text-amber-700"
                 }`}
               >
-                {d.status}
+                {d.status === "pending_key" ? "queued" : d.status}
+                {d.attempts ? ` · ${d.attempts}×` : ""}
               </span>
             </div>
+
+            {d.validationIssues && d.validationIssues.length > 0 && (
+              <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                <div className="mb-1 font-semibold">Strict CPGRAMS schema rejects this payload:</div>
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {d.validationIssues.map((i, idx) => (
+                    <li key={idx}>
+                      <span className="font-mono">{i.field}</span> — {i.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <details className="mt-2 text-xs">
               <summary className="cursor-pointer text-muted-foreground">CPGRAMS payload</summary>
               <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted/50 p-2 font-mono">
                 {JSON.stringify(d.payload, null, 2)}
               </pre>
             </details>
+
             {d.status === "submitted" && d.regId && (
               <div className="mt-2 text-xs">
                 Reg ID: <span className="font-mono font-semibold">{d.regId}</span>
               </div>
             )}
-            {d.lastError && (
+            {d.lastError && !d.validationIssues && (
               <div className="mt-2 text-xs text-destructive">Last error: {d.lastError}</div>
             )}
-            {d.status !== "submitted" && (
+            {d.status === "pending_key" && (
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
+              </div>
+            )}
+            {d.status !== "submitted" && d.status !== "draft" && (
               <button
                 onClick={() => onSubmit(d.draftId)}
                 className="mt-2 rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
               >
-                Confirm &amp; send
+                Confirm &amp; send now
               </button>
             )}
           </li>
@@ -565,6 +703,72 @@ function GrievanceDrafts({
     </div>
   );
 }
+
+function ValidationHistory({
+  records,
+  sessionId,
+}: {
+  records: ValidationRecord[];
+  sessionId: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Validation audit log ({records.length})
+        </div>
+        <div className="flex gap-2">
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=audit`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Audit JSON
+          </a>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=audit-csv`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Audit CSV
+          </a>
+        </div>
+      </div>
+      <ul className="space-y-3">
+        {records.map((v) => (
+          <li key={v.id} className="rounded-lg border border-border p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold">{v.templateId}</div>
+                <div className="text-xs text-muted-foreground">
+                  {v.confirmedAt ? new Date(v.confirmedAt).toLocaleString() : ""} · {v.changes.length} edit(s)
+                </div>
+              </div>
+              <a
+                href={`/api/session/export?sessionId=${sessionId}&mode=audit&validationId=${v.id}`}
+                className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+              >
+                ⬇ This record
+              </a>
+            </div>
+            {v.changes.length > 0 && (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer text-muted-foreground">Edits</summary>
+                <ul className="mt-1 space-y-0.5 font-mono">
+                  {v.changes.map((c, i) => (
+                    <li key={i}>
+                      <span className="font-semibold">{c.field}</span>: "{c.from}" → "{c.to}"
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
 
 function SchemesList({ schemes }: { schemes: Scheme[] }) {
   return (
@@ -677,16 +881,27 @@ function TemplatePicker({
   value,
   onChange,
   disabled,
+  onAddNew,
 }: {
   templates: TemplateMeta[];
   value: string;
   onChange: (id: string) => void;
   disabled: boolean;
+  onAddNew: () => void;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        📋 Form template
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          📋 Form template
+        </div>
+        <button
+          type="button"
+          onClick={onAddNew}
+          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+        >
+          + new
+        </button>
       </div>
       <select
         value={value}
@@ -695,14 +910,192 @@ function TemplatePicker({
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
       >
         <option value="">— choose a template —</option>
-        {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name} ({t.fieldCount} fields)
-          </option>
-        ))}
+        <optgroup label="Built-in">
+          {templates.filter((t) => !t.custom).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.fieldCount} fields)
+            </option>
+          ))}
+        </optgroup>
+        {templates.some((t) => t.custom) && (
+          <optgroup label="Your templates">
+            {templates.filter((t) => t.custom).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.fieldCount} fields)
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
       <div className="mt-2 text-[11px] text-muted-foreground">
-        The agent will auto-map your extracted docs into this template and ask you to validate.
+        The agent auto-maps your extracted docs into the chosen layout before asking you to validate.
+      </div>
+    </div>
+  );
+}
+
+type BuilderField = {
+  key: string;
+  label: string;
+  required: boolean;
+  aliases: string;
+  source: "aadhaar" | "ration" | "income" | "demographics" | "user";
+};
+
+function TemplateBuilder({
+  onSave,
+  onCancel,
+}: {
+  onSave: (tpl: {
+    id: string;
+    name: string;
+    ministry: string;
+    scheme: string;
+    fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[];
+  }) => void;
+  onCancel: () => void;
+}) {
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [ministry, setMinistry] = useState("");
+  const [scheme, setScheme] = useState("");
+  const [fields, setFields] = useState<BuilderField[]>([
+    { key: "applicant_name", label: "Applicant name", required: true, aliases: "applicant_name,name", source: "aadhaar" },
+    { key: "uid_number", label: "Aadhaar UID", required: true, aliases: "uid_number", source: "aadhaar" },
+  ]);
+
+  const updateField = (i: number, patch: Partial<BuilderField>) =>
+    setFields((arr) => arr.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const addField = () =>
+    setFields((arr) => [...arr, { key: "", label: "", required: false, aliases: "", source: "user" }]);
+  const removeField = (i: number) => setFields((arr) => arr.filter((_, j) => j !== i));
+
+  const save = () => {
+    onSave({
+      id: id.trim(),
+      name: name.trim(),
+      ministry: ministry.trim(),
+      scheme: scheme.trim() || name.trim(),
+      fields: fields.map((f) => ({
+        key: f.key.trim(),
+        label: f.label.trim(),
+        required: f.required,
+        aliases: f.aliases
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean),
+        source: f.source,
+      })),
+    });
+  };
+
+  return (
+    <div className="rounded-2xl border-2 border-primary/60 bg-card p-4 shadow-lg">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-primary">
+          Register new template
+        </div>
+        <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">
+          ✕
+        </button>
+      </div>
+      <div className="space-y-2">
+        <input
+          value={id}
+          onChange={(e) => setId(e.target.value.toLowerCase())}
+          placeholder="template id (e.g. mnrega-jobcard)"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="display name"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={ministry}
+          onChange={(e) => setMinistry(e.target.value)}
+          placeholder="ministry / department"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={scheme}
+          onChange={(e) => setScheme(e.target.value)}
+          placeholder="scheme name (optional)"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+      </div>
+
+      <div className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Fields & mapping
+      </div>
+      <div className="mt-2 space-y-2">
+        {fields.map((f, i) => (
+          <div key={i} className="rounded-md border border-border p-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={f.key}
+                onChange={(e) => updateField(i, { key: e.target.value })}
+                placeholder="key (snake_case)"
+                className="rounded border border-input bg-background px-2 py-1"
+              />
+              <input
+                value={f.label}
+                onChange={(e) => updateField(i, { label: e.target.value })}
+                placeholder="label"
+                className="rounded border border-input bg-background px-2 py-1"
+              />
+            </div>
+            <input
+              value={f.aliases}
+              onChange={(e) => updateField(i, { aliases: e.target.value })}
+              placeholder="aliases comma-sep (e.g. card_number,ration_no)"
+              className="mt-2 w-full rounded border border-input bg-background px-2 py-1"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={f.source}
+                onChange={(e) => updateField(i, { source: e.target.value as BuilderField["source"] })}
+                className="rounded border border-input bg-background px-2 py-1"
+              >
+                <option value="aadhaar">aadhaar</option>
+                <option value="ration">ration</option>
+                <option value="income">income</option>
+                <option value="demographics">demographics</option>
+                <option value="user">user-entered</option>
+              </select>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={f.required}
+                  onChange={(e) => updateField(i, { required: e.target.checked })}
+                />
+                required
+              </label>
+              <button
+                onClick={() => removeField(i)}
+                className="ml-auto rounded border border-border px-2 py-0.5 text-muted-foreground hover:text-destructive"
+              >
+                remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={addField} className="mt-2 text-xs text-primary hover:underline">
+        + add field
+      </button>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={save}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Register template
+        </button>
+        <button onClick={onCancel} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          Cancel
+        </button>
       </div>
     </div>
   );

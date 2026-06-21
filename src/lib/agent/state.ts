@@ -51,12 +51,33 @@ export type GrievanceDraft = {
     state?: string;
     district?: string;
     contact_phone?: string;
+    contact_email?: string;
   };
-  status: "draft" | "ready" | "submitted" | "failed";
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
   regId?: string;
   createdAt: number;
   submittedAt?: number;
   lastError?: string;
+  attempts: number;
+  lastAttemptAt?: number;
+  validationIssues?: { field: string; message: string }[];
+};
+
+export type CustomTemplateField = {
+  key: string;
+  label: string;
+  required?: boolean;
+  aliases?: string[];
+  source?: "aadhaar" | "ration" | "income" | "demographics" | "user";
+};
+
+export type CustomTemplate = {
+  id: string;
+  name: string;
+  ministry: string;
+  scheme: string;
+  fields: CustomTemplateField[];
+  createdAt: number;
 };
 
 export type AgentEvent =
@@ -106,6 +127,7 @@ export type AgentState = {
   validationHistory: ValidationRecord[];
   grievances: { regId: string; subject: string; filedAt: number }[];
   grievanceDrafts: GrievanceDraft[];
+  customTemplates: CustomTemplate[];
   filledPdfs: { templateId: string; url: string; at: number }[];
   status: "idle" | "thinking" | "awaiting_validation" | "speaking" | "done" | "error";
   conversation: { role: "user" | "assistant"; text: string; ts: number }[];
@@ -128,6 +150,7 @@ export function getOrCreateSession(sessionId: string, language = "en"): AgentSta
       validationHistory: [],
       grievances: [],
       grievanceDrafts: [],
+      customTemplates: [],
       filledPdfs: [],
       status: "idle",
       conversation: [],
