@@ -108,15 +108,50 @@ function AppPage() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [selectedTpl, setSelectedTpl] = useState<string>("");
   const [mockVoice, setMockVoice] = useState(false);
+  const [validationHistory, setValidationHistory] = useState<ValidationRecord[]>([]);
+  const [cpgramsReady, setCpgramsReady] = useState(false);
+  const [showTplBuilder, setShowTplBuilder] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load templates
-  useEffect(() => {
-    fetch("/api/templates")
+  const loadTemplates = useCallback(() => {
+    fetch(`/api/templates?sessionId=${sessionId}`)
       .then((r) => r.json())
       .then((d: { templates: TemplateMeta[] }) => setTemplates(d.templates));
-  }, []);
+  }, [sessionId]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
+  // Poll auto-resend queue: drains pending drafts the moment CPGRAMS_API_KEY arrives.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/grievance/draft?sessionId=${sessionId}`);
+        const d = (await r.json()) as {
+          drafts: GrievanceDraft[];
+          cpgramsConfigured: boolean;
+          autoResend: { drained: number; attempted: number };
+        };
+        if (cancelled) return;
+        setCpgramsReady(d.cpgramsConfigured);
+        setDrafts(d.drafts);
+        if (d.autoResend.drained > 0) {
+          setError(null);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [sessionId]);
 
   // SSE
   useEffect(() => {
