@@ -1,6 +1,5 @@
-// Stateful agent loop — TypeScript port of the LangGraph orchestrator.
-// Nodes: router -> gather -> propose-fill (HITL pause) -> synthesize -> grievance
-// Implements interrupt()/resume() via emit("awaiting_validation") + waitForResume().
+// Stateful agent loop. Nodes: router -> gather -> propose-fill (HITL pause) -> fill_pdf
+// plus draft_grievance (deferred submit) and file_grievance (live submit).
 
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
@@ -11,43 +10,46 @@ import {
   updateSession,
   waitForResume,
   type AgentState,
-  type Scheme,
+  type FieldProposal,
+  type GrievanceDraft,
 } from "./state";
 import { searchSchemes } from "../myscheme/client.server";
-import { fileGrievance } from "../cpgrams/client.server";
+import { fileGrievance, isOutOfPurview } from "../cpgrams/client.server";
 import { fillTemplate, generateDemoTemplate } from "../pdf/fill.server";
 import { maskAadhaar } from "../privacy/aadhaar-mask";
 import { runTranslateTts } from "../bhashini/pipeline.server";
+import { getTemplate, autoMapTemplate, TEMPLATES } from "../pdf/templates";
 
 const SYSTEM = `You are Bharat-Awaaz, a voice-first assistant for Indian citizens accessing government welfare.
 You help with FOUR things:
-1. Discover government schemes the user may be eligible for (use search_schemes).
-2. Read uploaded documents (Aadhaar, ration, income certificate) — these arrive via the user's actions and update agent state automatically.
-3. Fill official PDF application forms (use propose_form_fill, which pauses for human validation, then fill_pdf).
-4. File grievances on CPGRAMS when applications are unjustly stalled (use file_grievance).
+1. Discover government schemes (use search_schemes).
+2. Read uploaded documents (they arrive automatically and update agent state).
+3. Fill official PDF application forms: pick a template with set_template, then propose_form_fill (pauses for human validation), then fill_pdf.
+4. Draft & file CPGRAMS grievances: use draft_grievance to build a payload for the user to review; only call file_grievance directly when the user explicitly asks to send now.
+
+Available templates: ${TEMPLATES.map((t) => `${t.id} (${t.name})`).join("; ")}
 
 RULES:
-- Be brief and warm. The user is often non-literate and on a low-end phone.
-- Speak in plain language. Translate jargon.
-- Ask ONE question at a time. Never bombard.
-- Before generating any PDF, ALWAYS call propose_form_fill so the user can validate the data.
-- Refuse to handle: religious matters, RTI requests, subjudice cases — gently redirect.
-- All responses must be short (max 2 sentences) so they translate cleanly to the user's language.`;
+- Be brief and warm. Single question at a time.
+- Plain language. Translate jargon.
+- ALWAYS propose_form_fill before fill_pdf so the user can audit.
+- Prefer draft_grievance over file_grievance — drafts auto-resend once API keys land.
+- Refuse: religious matters, RTI, subjudice cases.
+- Max 2 short sentences per reply.`;
 
 async function speak(state: AgentState, englishText: string) {
   state.conversation.push({ role: "assistant", text: englishText, ts: Date.now() });
-  let audioUrl: string | undefined;
   try {
     const tts = await runTranslateTts(englishText, state.language);
     if (tts?.audioBase64) {
-      audioUrl = `data:audio/wav;base64,${tts.audioBase64}`;
+      const audioUrl = `data:audio/wav;base64,${tts.audioBase64}`;
       emit(state.sessionId, { type: "say", text: tts.translatedText, lang: state.language, audioUrl });
       return;
     }
   } catch (err) {
     console.warn("TTS failed", err);
   }
-  emit(state.sessionId, { type: "say", text: englishText, lang: "en", audioUrl });
+  emit(state.sessionId, { type: "say", text: englishText, lang: "en" });
 }
 
 export async function runAgentTurn(sessionId: string, userEnglishText: string) {
@@ -88,7 +90,7 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
 
     search_schemes: tool({
       description:
-        "Find government schemes the user may be eligible for, based on the demographics collected so far. Call only after you have at least gender + (age OR residence_type).",
+        "Find government schemes for the user. Call after at least gender + (age OR residence_type) is known.",
       inputSchema: z.object({}),
       execute: async () => {
         const result = await searchSchemes(state.demographics);
@@ -104,36 +106,71 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
       },
     }),
 
+    set_template: tool({
+      description: "Select which government PDF template to fill. Use one of the registered template IDs.",
+      inputSchema: z.object({ templateId: z.string() }),
+      execute: async ({ templateId }) => {
+        const tpl = getTemplate(templateId);
+        if (!tpl) return { ok: false, error: `Unknown template ${templateId}` };
+        updateSession(sessionId, (s) => {
+          s.selectedTemplateId = templateId;
+        });
+        return { ok: true, template: { id: tpl.id, name: tpl.name, fields: tpl.fields.map((f) => f.key) } };
+      },
+    }),
+
     propose_form_fill: tool({
       description:
-        "Propose filled form values for human validation BEFORE generating the PDF. Pauses execution until the user confirms. Returns the user-confirmed payload.",
+        "Auto-map extracted documents + demographics into the chosen template, surface per-field confidence, and pause for the user to edit/confirm. Returns the confirmed values.",
       inputSchema: z.object({
-        templateId: z.string().describe("e.g. 'pmkisan' or 'pmuy' — used to look up the template"),
-        fields: z.record(z.string(), z.string()).describe("field name -> value mapping"),
+        templateId: z.string(),
+        userOverrides: z.record(z.string(), z.string()).optional(),
       }),
-      execute: async ({ templateId, fields }) => {
+      execute: async ({ templateId, userOverrides }) => {
+        const tpl = getTemplate(templateId);
+        if (!tpl) return { ok: false, error: `Unknown template ${templateId}` };
+        const proposed: FieldProposal[] = autoMapTemplate(
+          tpl,
+          state.documents,
+          state.demographics as Record<string, unknown>,
+          userOverrides ?? {},
+        );
         const validationId = `v_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        // Mask Aadhaar for the UI preview, keep cleartext in state.
-        const maskedPayload: Record<string, unknown> = { templateId, fields: {} as Record<string, string> };
-        for (const [k, v] of Object.entries(fields)) {
-          (maskedPayload.fields as Record<string, string>)[k] = /aadhaar|uid/i.test(k) ? maskAadhaar(v) : v;
-        }
+        // mask UIDs for the SSE payload (state keeps cleartext for PDF write)
+        const safeProposed = proposed.map((p) => ({
+          ...p,
+          value: /uid|aadhaar/i.test(p.key) ? maskAadhaar(p.value) : p.value,
+        }));
         updateSession(sessionId, (s) => {
-          s.pendingValidation = { id: validationId, payload: { templateId, fields }, resumeTo: "fill_pdf" };
+          s.selectedTemplateId = templateId;
+          s.pendingValidation = { id: validationId, templateId, proposed, resumeTo: "fill_pdf" };
           s.status = "awaiting_validation";
         });
         emit(sessionId, {
           type: "awaiting_validation",
           id: validationId,
-          payload: maskedPayload,
+          templateId,
+          proposed: safeProposed,
           resumeTo: "fill_pdf",
         });
-        const confirmed = await waitForResume(sessionId, validationId);
+        const confirmed = (await waitForResume(sessionId, validationId)) as {
+          fields: Record<string, string>;
+          changes: { field: string; from: string; to: string }[];
+        };
         updateSession(sessionId, (s) => {
           s.pendingValidation = undefined;
           s.status = "thinking";
+          s.validationHistory.push({
+            id: validationId,
+            templateId,
+            proposedAt: Date.now(),
+            confirmedAt: Date.now(),
+            proposed,
+            final: confirmed.fields,
+            changes: confirmed.changes ?? [],
+          });
         });
-        return { confirmed };
+        return { ok: true, confirmed: confirmed.fields, edits: confirmed.changes?.length ?? 0 };
       },
     }),
 
@@ -144,18 +181,51 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
         fields: z.record(z.string(), z.string()),
       }),
       execute: async ({ templateId, fields }) => {
-        const fieldNames = Object.keys(fields);
-        const template = await generateDemoTemplate(`Application: ${templateId.toUpperCase()}`, fieldNames);
+        const tpl = getTemplate(templateId);
+        const title = tpl ? `${tpl.name} — Application` : `Application: ${templateId.toUpperCase()}`;
+        const fieldNames = tpl ? tpl.fields.map((f) => f.key) : Object.keys(fields);
+        const template = await generateDemoTemplate(title, fieldNames);
         const filled = await fillTemplate(template, { text: fields, flatten: true });
         const b64 = Buffer.from(filled).toString("base64");
         const url = `data:application/pdf;base64,${b64}`;
+        updateSession(sessionId, (s) => {
+          s.filledPdfs.push({ templateId, url, at: Date.now() });
+        });
         emit(sessionId, { type: "pdf_ready", url, templateId });
         return { ok: true, templateId };
       },
     }),
 
+    draft_grievance: tool({
+      description:
+        "Build a CPGRAMS-ready grievance payload for the user to confirm. Does NOT submit. The draft auto-resends once CPGRAMS_API_KEY is configured.",
+      inputSchema: z.object({
+        applicant_name: z.string(),
+        ministry_or_department: z.string(),
+        subject: z.string(),
+        description: z.string(),
+        previous_application_id: z.string().optional(),
+        state: z.string().optional(),
+        district: z.string().optional(),
+        contact_phone: z.string().optional(),
+      }),
+      execute: async (payload) => {
+        const block = isOutOfPurview(payload.description);
+        if (block) return { ok: false, error: `Out of CPGRAMS purview (${block}).` };
+        const draft: GrievanceDraft = {
+          draftId: "gd_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          payload,
+          status: "ready",
+          createdAt: Date.now(),
+        };
+        updateSession(sessionId, (s) => s.grievanceDrafts.push(draft));
+        emit(sessionId, { type: "grievance_draft", draft });
+        return { ok: true, draftId: draft.draftId };
+      },
+    }),
+
     file_grievance: tool({
-      description: "File a structured grievance with CPGRAMS. Use only when the user reports unjust rejection or stalled disbursement.",
+      description: "Immediately file a CPGRAMS grievance. Only use when the user explicitly asks to send now.",
       inputSchema: z.object({
         applicant_name: z.string(),
         ministry_or_department: z.string(),
@@ -197,10 +267,12 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
           content: `Context (agent state):
 demographics: ${JSON.stringify(state.demographics)}
 documents on file: ${state.documents.map((d) => d.kind).join(", ") || "none"}
-eligible schemes found: ${state.eligibleSchemes.length}
+eligible schemes: ${state.eligibleSchemes.length}
+selected template: ${state.selectedTemplateId ?? "none"}
+pending grievance drafts: ${state.grievanceDrafts.filter((d) => d.status !== "submitted").length}
 language: ${state.language}
 
-Respond and use tools as needed. Keep your reply to the user under 2 short sentences.`,
+Respond and use tools as needed. Keep your reply under 2 short sentences.`,
         },
       ],
       tools,

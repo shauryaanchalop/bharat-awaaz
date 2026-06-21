@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
 import { Route as ApiVisionExtractRouteImport } from './routes/api/vision.extract'
+import { Route as ApiSessionExportRouteImport } from './routes/api/session.export'
+import { Route as ApiGrievanceDraftRouteImport } from './routes/api/grievance.draft'
 import { Route as ApiBhashiniAsrRouteImport } from './routes/api/bhashini.asr'
 import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
 import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
@@ -27,9 +30,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
+  id: '/api/templates',
+  path: '/api/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiVisionExtractRoute = ApiVisionExtractRouteImport.update({
   id: '/api/vision/extract',
   path: '/api/vision/extract',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionExportRoute = ApiSessionExportRouteImport.update({
+  id: '/api/session/export',
+  path: '/api/session/export',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGrievanceDraftRoute = ApiGrievanceDraftRouteImport.update({
+  id: '/api/grievance/draft',
+  path: '/api/grievance/draft',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiBhashiniAsrRoute = ApiBhashiniAsrRouteImport.update({
@@ -56,29 +74,38 @@ const ApiAgentResumeRoute = ApiAgentResumeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
   '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/grievance/draft': typeof ApiGrievanceDraftRoute
+  '/api/session/export': typeof ApiSessionExportRoute
   '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
   '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/grievance/draft': typeof ApiGrievanceDraftRoute
+  '/api/session/export': typeof ApiSessionExportRoute
   '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
   '/api/agent/turn': typeof ApiAgentTurnRoute
   '/api/bhashini/asr': typeof ApiBhashiniAsrRoute
+  '/api/grievance/draft': typeof ApiGrievanceDraftRoute
+  '/api/session/export': typeof ApiSessionExportRoute
   '/api/vision/extract': typeof ApiVisionExtractRoute
 }
 export interface FileRouteTypes {
@@ -86,38 +113,50 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
     | '/api/bhashini/asr'
+    | '/api/grievance/draft'
+    | '/api/session/export'
     | '/api/vision/extract'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/app'
+    | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
     | '/api/bhashini/asr'
+    | '/api/grievance/draft'
+    | '/api/session/export'
     | '/api/vision/extract'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
     | '/api/agent/turn'
     | '/api/bhashini/asr'
+    | '/api/grievance/draft'
+    | '/api/session/export'
     | '/api/vision/extract'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRoute
+  ApiTemplatesRoute: typeof ApiTemplatesRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
   ApiAgentTurnRoute: typeof ApiAgentTurnRoute
   ApiBhashiniAsrRoute: typeof ApiBhashiniAsrRoute
+  ApiGrievanceDraftRoute: typeof ApiGrievanceDraftRoute
+  ApiSessionExportRoute: typeof ApiSessionExportRoute
   ApiVisionExtractRoute: typeof ApiVisionExtractRoute
 }
 
@@ -137,11 +176,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/templates': {
+      id: '/api/templates'
+      path: '/api/templates'
+      fullPath: '/api/templates'
+      preLoaderRoute: typeof ApiTemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/vision/extract': {
       id: '/api/vision/extract'
       path: '/api/vision/extract'
       fullPath: '/api/vision/extract'
       preLoaderRoute: typeof ApiVisionExtractRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session/export': {
+      id: '/api/session/export'
+      path: '/api/session/export'
+      fullPath: '/api/session/export'
+      preLoaderRoute: typeof ApiSessionExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/grievance/draft': {
+      id: '/api/grievance/draft'
+      path: '/api/grievance/draft'
+      fullPath: '/api/grievance/draft'
+      preLoaderRoute: typeof ApiGrievanceDraftRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bhashini/asr': {
@@ -178,22 +238,15 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRoute,
+  ApiTemplatesRoute: ApiTemplatesRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,
   ApiAgentTurnRoute: ApiAgentTurnRoute,
   ApiBhashiniAsrRoute: ApiBhashiniAsrRoute,
+  ApiGrievanceDraftRoute: ApiGrievanceDraftRoute,
+  ApiSessionExportRoute: ApiSessionExportRoute,
   ApiVisionExtractRoute: ApiVisionExtractRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
