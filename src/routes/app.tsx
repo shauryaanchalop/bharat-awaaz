@@ -881,16 +881,27 @@ function TemplatePicker({
   value,
   onChange,
   disabled,
+  onAddNew,
 }: {
   templates: TemplateMeta[];
   value: string;
   onChange: (id: string) => void;
   disabled: boolean;
+  onAddNew: () => void;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        📋 Form template
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          📋 Form template
+        </div>
+        <button
+          type="button"
+          onClick={onAddNew}
+          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+        >
+          + new
+        </button>
       </div>
       <select
         value={value}
@@ -899,14 +910,192 @@ function TemplatePicker({
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
       >
         <option value="">— choose a template —</option>
-        {templates.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name} ({t.fieldCount} fields)
-          </option>
-        ))}
+        <optgroup label="Built-in">
+          {templates.filter((t) => !t.custom).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({t.fieldCount} fields)
+            </option>
+          ))}
+        </optgroup>
+        {templates.some((t) => t.custom) && (
+          <optgroup label="Your templates">
+            {templates.filter((t) => t.custom).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.fieldCount} fields)
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
       <div className="mt-2 text-[11px] text-muted-foreground">
-        The agent will auto-map your extracted docs into this template and ask you to validate.
+        The agent auto-maps your extracted docs into the chosen layout before asking you to validate.
+      </div>
+    </div>
+  );
+}
+
+type BuilderField = {
+  key: string;
+  label: string;
+  required: boolean;
+  aliases: string;
+  source: "aadhaar" | "ration" | "income" | "demographics" | "user";
+};
+
+function TemplateBuilder({
+  onSave,
+  onCancel,
+}: {
+  onSave: (tpl: {
+    id: string;
+    name: string;
+    ministry: string;
+    scheme: string;
+    fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[];
+  }) => void;
+  onCancel: () => void;
+}) {
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+  const [ministry, setMinistry] = useState("");
+  const [scheme, setScheme] = useState("");
+  const [fields, setFields] = useState<BuilderField[]>([
+    { key: "applicant_name", label: "Applicant name", required: true, aliases: "applicant_name,name", source: "aadhaar" },
+    { key: "uid_number", label: "Aadhaar UID", required: true, aliases: "uid_number", source: "aadhaar" },
+  ]);
+
+  const updateField = (i: number, patch: Partial<BuilderField>) =>
+    setFields((arr) => arr.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const addField = () =>
+    setFields((arr) => [...arr, { key: "", label: "", required: false, aliases: "", source: "user" }]);
+  const removeField = (i: number) => setFields((arr) => arr.filter((_, j) => j !== i));
+
+  const save = () => {
+    onSave({
+      id: id.trim(),
+      name: name.trim(),
+      ministry: ministry.trim(),
+      scheme: scheme.trim() || name.trim(),
+      fields: fields.map((f) => ({
+        key: f.key.trim(),
+        label: f.label.trim(),
+        required: f.required,
+        aliases: f.aliases
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean),
+        source: f.source,
+      })),
+    });
+  };
+
+  return (
+    <div className="rounded-2xl border-2 border-primary/60 bg-card p-4 shadow-lg">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-primary">
+          Register new template
+        </div>
+        <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">
+          ✕
+        </button>
+      </div>
+      <div className="space-y-2">
+        <input
+          value={id}
+          onChange={(e) => setId(e.target.value.toLowerCase())}
+          placeholder="template id (e.g. mnrega-jobcard)"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="display name"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={ministry}
+          onChange={(e) => setMinistry(e.target.value)}
+          placeholder="ministry / department"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+        <input
+          value={scheme}
+          onChange={(e) => setScheme(e.target.value)}
+          placeholder="scheme name (optional)"
+          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+      </div>
+
+      <div className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        Fields & mapping
+      </div>
+      <div className="mt-2 space-y-2">
+        {fields.map((f, i) => (
+          <div key={i} className="rounded-md border border-border p-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={f.key}
+                onChange={(e) => updateField(i, { key: e.target.value })}
+                placeholder="key (snake_case)"
+                className="rounded border border-input bg-background px-2 py-1"
+              />
+              <input
+                value={f.label}
+                onChange={(e) => updateField(i, { label: e.target.value })}
+                placeholder="label"
+                className="rounded border border-input bg-background px-2 py-1"
+              />
+            </div>
+            <input
+              value={f.aliases}
+              onChange={(e) => updateField(i, { aliases: e.target.value })}
+              placeholder="aliases comma-sep (e.g. card_number,ration_no)"
+              className="mt-2 w-full rounded border border-input bg-background px-2 py-1"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={f.source}
+                onChange={(e) => updateField(i, { source: e.target.value as BuilderField["source"] })}
+                className="rounded border border-input bg-background px-2 py-1"
+              >
+                <option value="aadhaar">aadhaar</option>
+                <option value="ration">ration</option>
+                <option value="income">income</option>
+                <option value="demographics">demographics</option>
+                <option value="user">user-entered</option>
+              </select>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={f.required}
+                  onChange={(e) => updateField(i, { required: e.target.checked })}
+                />
+                required
+              </label>
+              <button
+                onClick={() => removeField(i)}
+                className="ml-auto rounded border border-border px-2 py-0.5 text-muted-foreground hover:text-destructive"
+              >
+                remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={addField} className="mt-2 text-xs text-primary hover:underline">
+        + add field
+      </button>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={save}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Register template
+        </button>
+        <button onClick={onCancel} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          Cancel
+        </button>
       </div>
     </div>
   );
