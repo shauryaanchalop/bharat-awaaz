@@ -150,6 +150,7 @@ export function getOrCreateSession(sessionId: string, language = "en"): AgentSta
       validationHistory: [],
       grievances: [],
       grievanceDrafts: [],
+      customTemplates: [],
       filledPdfs: [],
       status: "idle",
       conversation: [],
