@@ -36,10 +36,13 @@ type GrievanceDraft = {
     state?: string;
     district?: string;
     contact_phone?: string;
+    contact_email?: string;
   };
-  status: "draft" | "ready" | "submitted" | "failed";
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
   regId?: string;
   lastError?: string;
+  attempts?: number;
+  validationIssues?: { field: string; message: string }[];
 };
 
 type AgentEvent =
