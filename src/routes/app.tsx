@@ -591,34 +591,50 @@ function GrievanceDrafts({
   drafts,
   onSubmit,
   onRetryAll,
+  cpgramsReady,
 }: {
   drafts: GrievanceDraft[];
   onSubmit: (id: string) => void;
   onRetryAll: () => void;
+  cpgramsReady: boolean;
 }) {
   const pending = drafts.filter((d) => d.status !== "submitted");
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Grievance drafts ({drafts.length})
         </div>
-        {pending.length > 0 && (
-          <button
-            onClick={onRetryAll}
-            className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/70"
+        <div className="flex items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+              cpgramsReady ? "bg-green-500/15 text-green-700" : "bg-amber-500/15 text-amber-700"
+            }`}
+            title={
+              cpgramsReady
+                ? "CPGRAMS_API_KEY is configured — drafts will auto-submit."
+                : "Waiting for CPGRAMS_API_KEY — pending drafts auto-submit the moment it arrives."
+            }
           >
-            ↻ Retry all
-          </button>
-        )}
+            CPGRAMS {cpgramsReady ? "live" : "pending"}
+          </span>
+          {pending.length > 0 && (
+            <button
+              onClick={onRetryAll}
+              className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/70"
+            >
+              ↻ Retry now
+            </button>
+          )}
+        </div>
       </div>
       <ul className="space-y-3">
         {drafts.map((d) => (
           <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-semibold">{d.payload.subject}</div>
-                <div className="text-xs text-muted-foreground">
+              <div className="min-w-0">
+                <div className="truncate font-semibold">{d.payload.subject}</div>
+                <div className="truncate text-xs text-muted-foreground">
                   {d.payload.ministry_or_department} · {d.payload.applicant_name}
                 </div>
               </div>
@@ -628,32 +644,57 @@ function GrievanceDrafts({
                     ? "bg-green-500/15 text-green-700"
                     : d.status === "failed"
                       ? "bg-destructive/15 text-destructive"
-                      : "bg-amber-500/15 text-amber-700"
+                      : d.status === "pending_key"
+                        ? "bg-blue-500/15 text-blue-700"
+                        : d.status === "draft"
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-amber-500/15 text-amber-700"
                 }`}
               >
-                {d.status}
+                {d.status === "pending_key" ? "queued" : d.status}
+                {d.attempts ? ` · ${d.attempts}×` : ""}
               </span>
             </div>
+
+            {d.validationIssues && d.validationIssues.length > 0 && (
+              <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                <div className="mb-1 font-semibold">Strict CPGRAMS schema rejects this payload:</div>
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {d.validationIssues.map((i, idx) => (
+                    <li key={idx}>
+                      <span className="font-mono">{i.field}</span> — {i.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <details className="mt-2 text-xs">
               <summary className="cursor-pointer text-muted-foreground">CPGRAMS payload</summary>
               <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted/50 p-2 font-mono">
                 {JSON.stringify(d.payload, null, 2)}
               </pre>
             </details>
+
             {d.status === "submitted" && d.regId && (
               <div className="mt-2 text-xs">
                 Reg ID: <span className="font-mono font-semibold">{d.regId}</span>
               </div>
             )}
-            {d.lastError && (
+            {d.lastError && !d.validationIssues && (
               <div className="mt-2 text-xs text-destructive">Last error: {d.lastError}</div>
             )}
-            {d.status !== "submitted" && (
+            {d.status === "pending_key" && (
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
+              </div>
+            )}
+            {d.status !== "submitted" && d.status !== "draft" && (
               <button
                 onClick={() => onSubmit(d.draftId)}
                 className="mt-2 rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
               >
-                Confirm &amp; send
+                Confirm &amp; send now
               </button>
             )}
           </li>
@@ -662,6 +703,72 @@ function GrievanceDrafts({
     </div>
   );
 }
+
+function ValidationHistory({
+  records,
+  sessionId,
+}: {
+  records: ValidationRecord[];
+  sessionId: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Validation audit log ({records.length})
+        </div>
+        <div className="flex gap-2">
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=audit`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Audit JSON
+          </a>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=audit-csv`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Audit CSV
+          </a>
+        </div>
+      </div>
+      <ul className="space-y-3">
+        {records.map((v) => (
+          <li key={v.id} className="rounded-lg border border-border p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold">{v.templateId}</div>
+                <div className="text-xs text-muted-foreground">
+                  {v.confirmedAt ? new Date(v.confirmedAt).toLocaleString() : ""} · {v.changes.length} edit(s)
+                </div>
+              </div>
+              <a
+                href={`/api/session/export?sessionId=${sessionId}&mode=audit&validationId=${v.id}`}
+                className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+              >
+                ⬇ This record
+              </a>
+            </div>
+            {v.changes.length > 0 && (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer text-muted-foreground">Edits</summary>
+                <ul className="mt-1 space-y-0.5 font-mono">
+                  {v.changes.map((c, i) => (
+                    <li key={i}>
+                      <span className="font-semibold">{c.field}</span>: "{c.from}" → "{c.to}"
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+
 
 function SchemesList({ schemes }: { schemes: Scheme[] }) {
   return (
