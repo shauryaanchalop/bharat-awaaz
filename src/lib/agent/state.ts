@@ -127,6 +127,7 @@ export type AgentState = {
   validationHistory: ValidationRecord[];
   grievances: { regId: string; subject: string; filedAt: number }[];
   grievanceDrafts: GrievanceDraft[];
+  customTemplates: CustomTemplate[];
   filledPdfs: { templateId: string; url: string; at: number }[];
   status: "idle" | "thinking" | "awaiting_validation" | "speaking" | "done" | "error";
   conversation: { role: "user" | "assistant"; text: string; ts: number }[];
