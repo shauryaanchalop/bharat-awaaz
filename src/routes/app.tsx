@@ -69,7 +69,16 @@ type Scheme = {
 
 type Msg = { role: "user" | "assistant"; text: string; lang?: string; audioUrl?: string };
 
-type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number };
+type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number; custom?: boolean };
+
+type ValidationRecord = {
+  id: string;
+  templateId: string;
+  confirmedAt?: number;
+  proposed: FieldProposal[];
+  final: Record<string, string>;
+  changes: { field: string; from: string; to: string }[];
+};
 
 function newSessionId() {
   return "s_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
