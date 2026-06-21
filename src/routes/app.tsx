@@ -237,6 +237,15 @@ function AppPage() {
   const confirmValidation = useCallback(
     async (fields: Record<string, string>, changes: { field: string; from: string; to: string }[]) => {
       if (!pendingValidation) return;
+      const record: ValidationRecord = {
+        id: pendingValidation.id,
+        templateId: pendingValidation.templateId,
+        confirmedAt: Date.now(),
+        proposed: pendingValidation.proposed,
+        final: fields,
+        changes,
+      };
+      setValidationHistory((h) => [...h, record]);
       await fetch("/api/agent/resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -259,7 +268,7 @@ function AppPage() {
       await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, templateId: id }),
+        body: JSON.stringify({ action: "select", sessionId, templateId: id }),
       });
       const tpl = templates.find((x) => x.id === id);
       if (tpl) sendText(`Use the ${tpl.name} (template id: ${id}) for my application. Propose the filled form for me to validate.`);
@@ -274,7 +283,7 @@ function AppPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "submit", sessionId, draftId }),
       });
-      const d = (await r.json()) as { ok: boolean; result?: { regId: string }; error?: string };
+      const d = (await r.json()) as { ok: boolean; regId?: string; error?: string; status?: string };
       if (!d.ok) setError(d.error ?? "Submit failed");
     },
     [sessionId],
@@ -286,13 +295,35 @@ function AppPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "retry-all", sessionId }),
     });
-    const d = (await r.json()) as {
-      ok: boolean;
-      results: { draftId: string; ok: boolean; regId?: string; error?: string }[];
-    };
-    const fails = d.results.filter((x) => !x.ok);
-    if (fails.length) setError(`${fails.length} draft(s) still failing — likely API key not yet active.`);
+    const d = (await r.json()) as { ok: boolean; drained: number; attempted: number };
+    if (d.attempted > 0 && d.drained < d.attempted) {
+      setError(`${d.attempted - d.drained} draft(s) still pending — CPGRAMS key not active yet.`);
+    }
   }, [sessionId]);
+
+  const registerTemplate = useCallback(
+    async (template: {
+      id: string;
+      name: string;
+      ministry: string;
+      scheme: string;
+      fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[];
+    }) => {
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "register", sessionId, template }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string };
+      if (!d.ok) {
+        setError(d.error ?? "Template registration failed");
+        return false;
+      }
+      loadTemplates();
+      return true;
+    },
+    [sessionId, loadTemplates],
+  );
 
   return (
     <div className="min-h-screen pb-32">
