@@ -386,7 +386,16 @@ function AppPage() {
           )}
 
           {drafts.length > 0 && (
-            <GrievanceDrafts drafts={drafts} onSubmit={submitDraft} onRetryAll={retryAllDrafts} />
+            <GrievanceDrafts
+              drafts={drafts}
+              onSubmit={submitDraft}
+              onRetryAll={retryAllDrafts}
+              cpgramsReady={cpgramsReady}
+            />
+          )}
+
+          {validationHistory.length > 0 && (
+            <ValidationHistory records={validationHistory} sessionId={sessionId} />
           )}
 
           {schemes.length > 0 && <SchemesList schemes={schemes} />}
@@ -400,7 +409,17 @@ function AppPage() {
             value={selectedTpl}
             onChange={onTemplateChange}
             disabled={thinking || !!pendingValidation}
+            onAddNew={() => setShowTplBuilder(true)}
           />
+          {showTplBuilder && (
+            <TemplateBuilder
+              onSave={async (tpl) => {
+                const ok = await registerTemplate(tpl);
+                if (ok) setShowTplBuilder(false);
+              }}
+              onCancel={() => setShowTplBuilder(false)}
+            />
+          )}
           <DocumentUpload sessionId={sessionId} onUploaded={(d) => setDocs((x) => [...x, d])} />
           {docs.length > 0 && <DocsPanel docs={docs} />}
           <Tip text={t.sub} />
