@@ -1,5 +1,4 @@
 // In-memory session state. Hackathon-grade — single-instance only.
-// For production, swap for Durable Objects or DB-backed storage.
 
 export type Demographics = {
   name?: string;
@@ -22,6 +21,44 @@ export type ExtractedDoc = {
   extractedAt: number;
 };
 
+export type FieldProposal = {
+  key: string;
+  label: string;
+  value: string;
+  confidence: number;
+  source: string;
+  required: boolean;
+};
+
+export type ValidationRecord = {
+  id: string;
+  templateId: string;
+  proposedAt: number;
+  confirmedAt?: number;
+  proposed: FieldProposal[];
+  final: Record<string, string>;
+  changes: { field: string; from: string; to: string }[];
+};
+
+export type GrievanceDraft = {
+  draftId: string;
+  payload: {
+    applicant_name: string;
+    ministry_or_department: string;
+    subject: string;
+    description: string;
+    previous_application_id?: string;
+    state?: string;
+    district?: string;
+    contact_phone?: string;
+  };
+  status: "draft" | "ready" | "submitted" | "failed";
+  regId?: string;
+  createdAt: number;
+  submittedAt?: number;
+  lastError?: string;
+};
+
 export type AgentEvent =
   | { type: "asr"; text: string; lang: string }
   | { type: "thinking" }
@@ -30,9 +67,16 @@ export type AgentEvent =
   | { type: "tool_result"; name: string; result: unknown }
   | { type: "schemes"; schemes: Scheme[] }
   | { type: "document"; doc: ExtractedDoc }
-  | { type: "awaiting_validation"; id: string; payload: Record<string, unknown>; resumeTo: string }
+  | {
+      type: "awaiting_validation";
+      id: string;
+      templateId: string;
+      proposed: FieldProposal[];
+      resumeTo: string;
+    }
   | { type: "pdf_ready"; url: string; templateId: string }
-  | { type: "grievance_filed"; regId: string }
+  | { type: "grievance_draft"; draft: GrievanceDraft }
+  | { type: "grievance_filed"; regId: string; draftId?: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -48,20 +92,21 @@ export type Scheme = {
 
 export type AgentState = {
   sessionId: string;
-  language: string; // ISO-639-1
+  language: string;
   demographics: Demographics;
   documents: ExtractedDoc[];
   eligibleSchemes: Scheme[];
-  targetForm?: {
-    templateId: string;
-    collected: Record<string, string>;
-  };
+  selectedTemplateId?: string;
   pendingValidation?: {
     id: string;
-    payload: Record<string, unknown>;
+    templateId: string;
+    proposed: FieldProposal[];
     resumeTo: string;
   };
+  validationHistory: ValidationRecord[];
   grievances: { regId: string; subject: string; filedAt: number }[];
+  grievanceDrafts: GrievanceDraft[];
+  filledPdfs: { templateId: string; url: string; at: number }[];
   status: "idle" | "thinking" | "awaiting_validation" | "speaking" | "done" | "error";
   conversation: { role: "user" | "assistant"; text: string; ts: number }[];
   lastActive: number;
@@ -80,7 +125,10 @@ export function getOrCreateSession(sessionId: string, language = "en"): AgentSta
       demographics: {},
       documents: [],
       eligibleSchemes: [],
+      validationHistory: [],
       grievances: [],
+      grievanceDrafts: [],
+      filledPdfs: [],
       status: "idle",
       conversation: [],
       lastActive: Date.now(),
@@ -109,7 +157,6 @@ function evictStale() {
   }
 }
 
-/** Per-session SSE listeners. */
 const LISTENERS = new Map<string, Set<(e: AgentEvent) => void>>();
 
 export function subscribe(sessionId: string, cb: (e: AgentEvent) => void) {
@@ -129,12 +176,11 @@ export function emit(sessionId: string, event: AgentEvent) {
     try {
       cb(event);
     } catch {
-      // ignore listener errors
+      // ignore
     }
   }
 }
 
-/** Resume gate: graph awaits this promise after emitting awaiting_validation. */
 const RESUME_WAITERS = new Map<string, (payload: Record<string, unknown>) => void>();
 
 export function waitForResume(sessionId: string, validationId: string) {
