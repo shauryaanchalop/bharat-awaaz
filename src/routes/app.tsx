@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
 
@@ -16,14 +16,41 @@ export const Route = createFileRoute("/app")({
   component: AppPage,
 });
 
+type FieldProposal = {
+  key: string;
+  label: string;
+  value: string;
+  confidence: number;
+  source: string;
+  required: boolean;
+};
+
+type GrievanceDraft = {
+  draftId: string;
+  payload: {
+    applicant_name: string;
+    ministry_or_department: string;
+    subject: string;
+    description: string;
+    previous_application_id?: string;
+    state?: string;
+    district?: string;
+    contact_phone?: string;
+  };
+  status: "draft" | "ready" | "submitted" | "failed";
+  regId?: string;
+  lastError?: string;
+};
+
 type AgentEvent =
   | { type: "thinking" }
   | { type: "say"; text: string; lang: string; audioUrl?: string }
   | { type: "schemes"; schemes: Scheme[] }
   | { type: "document"; doc: { id: string; kind: string; fields: Record<string, string> } }
-  | { type: "awaiting_validation"; id: string; payload: { templateId: string; fields: Record<string, string> }; resumeTo: string }
+  | { type: "awaiting_validation"; id: string; templateId: string; proposed: FieldProposal[]; resumeTo: string }
   | { type: "pdf_ready"; url: string; templateId: string }
-  | { type: "grievance_filed"; regId: string }
+  | { type: "grievance_draft"; draft: GrievanceDraft }
+  | { type: "grievance_filed"; regId: string; draftId?: string }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -39,6 +66,8 @@ type Scheme = {
 
 type Msg = { role: "user" | "assistant"; text: string; lang?: string; audioUrl?: string };
 
+type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number };
+
 function newSessionId() {
   return "s_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
@@ -50,7 +79,7 @@ function AppPage() {
 
   const [sessionId] = useState(() => newSessionId());
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", text: "नमस्ते! मुझे बताइए — आप क्या जानना चाहते हैं? कोई योजना, कोई फॉर्म, या कोई शिकायत?", lang: "hi" },
+    { role: "assistant", text: "नमस्ते! कोई योजना, कोई फॉर्म, या कोई शिकायत — मुझे बताइए।", lang: "hi" },
   ]);
   const [thinking, setThinking] = useState(false);
   const [schemes, setSchemes] = useState<Scheme[]>([]);
@@ -58,13 +87,24 @@ function AppPage() {
   const [pendingValidation, setPendingValidation] = useState<{
     id: string;
     templateId: string;
-    fields: Record<string, string>;
+    proposed: FieldProposal[];
   } | null>(null);
   const [pdfs, setPdfs] = useState<{ url: string; templateId: string }[]>([]);
   const [grievances, setGrievances] = useState<string[]>([]);
+  const [drafts, setDrafts] = useState<GrievanceDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
+  const [selectedTpl, setSelectedTpl] = useState<string>("");
+  const [mockVoice, setMockVoice] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Load templates
+  useEffect(() => {
+    fetch("/api/templates")
+      .then((r) => r.json())
+      .then((d: { templates: TemplateMeta[] }) => setTemplates(d.templates));
+  }, []);
 
   // SSE
   useEffect(() => {
@@ -82,6 +122,15 @@ function AppPage() {
             if (e.audioUrl && audioRef.current) {
               audioRef.current.src = e.audioUrl;
               audioRef.current.play().catch(() => {});
+            } else if (mockVoice) {
+              // mock TTS: speak via browser SpeechSynthesis if available
+              try {
+                const u = new SpeechSynthesisUtterance(e.text);
+                u.lang = e.lang === "hi" ? "hi-IN" : "en-IN";
+                window.speechSynthesis.speak(u);
+              } catch {
+                /* ignore */
+              }
             }
             break;
           case "schemes":
@@ -91,14 +140,22 @@ function AppPage() {
             setDocs((d) => [...d, e.doc]);
             break;
           case "awaiting_validation":
-            setPendingValidation({ id: e.id, templateId: e.payload.templateId, fields: e.payload.fields });
+            setPendingValidation({ id: e.id, templateId: e.templateId, proposed: e.proposed });
             setThinking(false);
             break;
           case "pdf_ready":
             setPdfs((p) => [...p, { url: e.url, templateId: e.templateId }]);
             break;
+          case "grievance_draft":
+            setDrafts((d) => [...d.filter((x) => x.draftId !== e.draft.draftId), e.draft]);
+            break;
           case "grievance_filed":
             setGrievances((g) => [...g, e.regId]);
+            if (e.draftId) {
+              setDrafts((d) =>
+                d.map((x) => (x.draftId === e.draftId ? { ...x, status: "submitted", regId: e.regId } : x)),
+              );
+            }
             break;
           case "error":
             setError(e.message);
@@ -109,14 +166,11 @@ function AppPage() {
             break;
         }
       } catch {
-        // ignore
+        /* ignore */
       }
     };
-    es.onerror = () => {
-      // browser will auto-retry
-    };
     return () => es.close();
-  }, [sessionId]);
+  }, [sessionId, mockVoice]);
 
   const sendText = useCallback(
     async (text: string) => {
@@ -134,7 +188,7 @@ function AppPage() {
   );
 
   const confirmValidation = useCallback(
-    async (fields: Record<string, string>) => {
+    async (fields: Record<string, string>, changes: { field: string; from: string; to: string }[]) => {
       if (!pendingValidation) return;
       await fetch("/api/agent/resume", {
         method: "POST",
@@ -142,7 +196,7 @@ function AppPage() {
         body: JSON.stringify({
           sessionId,
           validationId: pendingValidation.id,
-          payload: { templateId: pendingValidation.templateId, fields },
+          payload: { fields, changes },
         }),
       });
       setPendingValidation(null);
@@ -151,28 +205,88 @@ function AppPage() {
     [pendingValidation, sessionId],
   );
 
+  const onTemplateChange = useCallback(
+    async (id: string) => {
+      setSelectedTpl(id);
+      if (!id) return;
+      await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, templateId: id }),
+      });
+      const tpl = templates.find((x) => x.id === id);
+      if (tpl) sendText(`Use the ${tpl.name} (template id: ${id}) for my application. Propose the filled form for me to validate.`);
+    },
+    [sessionId, templates, sendText],
+  );
+
+  const submitDraft = useCallback(
+    async (draftId: string) => {
+      const r = await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "submit", sessionId, draftId }),
+      });
+      const d = (await r.json()) as { ok: boolean; result?: { regId: string }; error?: string };
+      if (!d.ok) setError(d.error ?? "Submit failed");
+    },
+    [sessionId],
+  );
+
+  const retryAllDrafts = useCallback(async () => {
+    const r = await fetch("/api/grievance/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "retry-all", sessionId }),
+    });
+    const d = (await r.json()) as {
+      ok: boolean;
+      results: { draftId: string; ok: boolean; regId?: string; error?: string }[];
+    };
+    const fails = d.results.filter((x) => !x.ok);
+    if (fails.length) setError(`${fails.length} draft(s) still failing — likely API key not yet active.`);
+  }, [sessionId]);
+
   return (
     <div className="min-h-screen pb-32">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--saffron)] via-white to-[var(--india-green)]" />
 
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+      <header className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4">
         <div className="flex items-center gap-3">
           <div className="font-display text-xl font-bold">भारत-आवाज़</div>
           <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent-foreground">
             agent live
           </span>
         </div>
-        <select
-          value={lang}
-          onChange={(e) => setLang(e.target.value as LangCode)}
-          className="rounded-md border border-border bg-card px-3 py-1.5 text-sm"
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.native} · {l.english}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs">
+            <input type="checkbox" checked={mockVoice} onChange={(e) => setMockVoice(e.target.checked)} />
+            Mock voice
+          </label>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}`}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-muted"
+          >
+            ⬇ Session JSON
+          </a>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=docs`}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-muted"
+          >
+            ⬇ Docs JSON
+          </a>
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value as LangCode)}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.native} · {l.english}
+              </option>
+            ))}
+          </select>
+        </div>
       </header>
 
       <main className="mx-auto grid max-w-5xl gap-6 px-4 md:grid-cols-[1fr_360px]">
@@ -187,25 +301,41 @@ function AppPage() {
           {pendingValidation && (
             <ValidationPanel
               templateId={pendingValidation.templateId}
-              initial={pendingValidation.fields}
+              proposed={pendingValidation.proposed}
               onConfirm={confirmValidation}
               onCancel={() => setPendingValidation(null)}
             />
           )}
 
+          {drafts.length > 0 && (
+            <GrievanceDrafts drafts={drafts} onSubmit={submitDraft} onRetryAll={retryAllDrafts} />
+          )}
+
           {schemes.length > 0 && <SchemesList schemes={schemes} />}
-          {pdfs.length > 0 && <PdfsList pdfs={pdfs} />}
+          {pdfs.length > 0 && <PdfsList pdfs={pdfs} sessionId={sessionId} />}
           {grievances.length > 0 && <GrievanceList ids={grievances} />}
         </section>
 
         <aside className="space-y-4">
+          <TemplatePicker
+            templates={templates}
+            value={selectedTpl}
+            onChange={onTemplateChange}
+            disabled={thinking || !!pendingValidation}
+          />
           <DocumentUpload sessionId={sessionId} onUploaded={(d) => setDocs((x) => [...x, d])} />
           {docs.length > 0 && <DocsPanel docs={docs} />}
           <Tip text={t.sub} />
         </aside>
       </main>
 
-      <Composer lang={lang} sessionId={sessionId} onSend={sendText} disabled={thinking || !!pendingValidation} />
+      <Composer
+        lang={lang}
+        sessionId={sessionId}
+        onSend={sendText}
+        disabled={thinking || !!pendingValidation}
+        mockVoice={mockVoice}
+      />
       <audio ref={audioRef} hidden />
     </div>
   );
@@ -222,23 +352,10 @@ function Conversation({ messages, thinking }: { messages: Msg[]; thinking: boole
         <div key={i} className={`mb-3 flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
           <div
             className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-              m.role === "user"
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground"
+              m.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
             }`}
           >
             <div className="text-base leading-snug">{m.text}</div>
-            {m.audioUrl && (
-              <button
-                onClick={() => {
-                  const a = new Audio(m.audioUrl);
-                  a.play();
-                }}
-                className="mt-1 text-xs opacity-70 hover:opacity-100"
-              >
-                ▶ replay audio
-              </button>
-            )}
           </div>
         </div>
       ))}
@@ -257,18 +374,40 @@ function Conversation({ messages, thinking }: { messages: Msg[]; thinking: boole
   );
 }
 
+function confidenceTone(c: number) {
+  if (c >= 0.85) return { label: "high", cls: "bg-green-500/15 text-green-700 border-green-500/30" };
+  if (c >= 0.5) return { label: "med", cls: "bg-amber-500/15 text-amber-700 border-amber-500/30" };
+  if (c > 0) return { label: "low", cls: "bg-red-500/15 text-red-700 border-red-500/30" };
+  return { label: "empty", cls: "bg-muted text-muted-foreground border-border" };
+}
+
 function ValidationPanel({
   templateId,
-  initial,
+  proposed,
   onConfirm,
   onCancel,
 }: {
   templateId: string;
-  initial: Record<string, string>;
-  onConfirm: (fields: Record<string, string>) => void;
+  proposed: FieldProposal[];
+  onConfirm: (fields: Record<string, string>, changes: { field: string; from: string; to: string }[]) => void;
   onCancel: () => void;
 }) {
-  const [fields, setFields] = useState(initial);
+  const initial = Object.fromEntries(proposed.map((p) => [p.key, p.value]));
+  const [fields, setFields] = useState<Record<string, string>>(initial);
+  const [audit, setAudit] = useState<{ field: string; from: string; to: string; at: number }[]>([]);
+
+  const onEdit = (key: string, value: string) => {
+    setFields((f) => {
+      const from = f[key] ?? "";
+      if (from !== value) {
+        setAudit((a) => [...a, { field: key, from, to: value, at: Date.now() }]);
+      }
+      return { ...f, [key]: value };
+    });
+  };
+
+  const missingRequired = proposed.filter((p) => p.required && !(fields[p.key] ?? "").trim());
+
   return (
     <div className="rounded-2xl border-2 border-primary/60 bg-card p-5 shadow-lg">
       <div className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-primary">
@@ -276,35 +415,153 @@ function ValidationPanel({
         Human validation required
       </div>
       <div className="mb-4 text-sm text-muted-foreground">
-        Review and edit before we generate the official PDF for{" "}
-        <span className="font-mono">{templateId}</span>. Aadhaar UIDs are masked by default.
+        Template <span className="font-mono">{templateId}</span> · {proposed.length} fields ·{" "}
+        {proposed.filter((p) => p.confidence >= 0.85).length} high-confidence ·{" "}
+        {proposed.filter((p) => p.confidence === 0).length} missing
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {Object.entries(fields).map(([k, v]) => (
-          <label key={k} className="block text-sm">
-            <span className="mb-1 block font-medium text-foreground">{k}</span>
-            <input
-              value={v}
-              onChange={(e) => setFields({ ...fields, [k]: e.target.value })}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </label>
-        ))}
+        {proposed.map((p) => {
+          const tone = confidenceTone(p.confidence);
+          return (
+            <label key={p.key} className="block text-sm">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">
+                  {p.label}
+                  {p.required && <span className="ml-1 text-destructive">*</span>}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${tone.cls}`}>
+                  {tone.label} · {(p.confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <input
+                value={fields[p.key] ?? ""}
+                onChange={(e) => onEdit(p.key, e.target.value)}
+                placeholder={p.confidence === 0 ? "— missing, please fill —" : ""}
+                className={`w-full rounded-md border bg-background px-3 py-2 text-sm ${
+                  p.required && !(fields[p.key] ?? "").trim()
+                    ? "border-destructive/50"
+                    : "border-input"
+                }`}
+              />
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                source: <span className="font-mono">{p.source}</span>
+              </div>
+            </label>
+          );
+        })}
       </div>
+
+      {audit.length > 0 && (
+        <details className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+          <summary className="cursor-pointer font-semibold">Edit audit log ({audit.length})</summary>
+          <ul className="mt-2 space-y-1 font-mono">
+            {audit.map((a, i) => (
+              <li key={i}>
+                <span className="text-muted-foreground">{new Date(a.at).toLocaleTimeString()}</span>{" "}
+                <span className="font-semibold">{a.field}</span>: "{a.from}" → "{a.to}"
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {missingRequired.length > 0 && (
+        <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700">
+          ⚠ {missingRequired.length} required field(s) still empty: {missingRequired.map((m) => m.label).join(", ")}
+        </div>
+      )}
+
       <div className="mt-4 flex gap-2">
         <button
-          onClick={() => onConfirm(fields)}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          onClick={() => {
+            const changes = audit.map(({ field, from, to }) => ({ field, from, to }));
+            onConfirm(fields, changes);
+          }}
+          disabled={missingRequired.length > 0}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           ✓ Confirm &amp; generate PDF
         </button>
-        <button
-          onClick={onCancel}
-          className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
-        >
+        <button onClick={onCancel} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+function GrievanceDrafts({
+  drafts,
+  onSubmit,
+  onRetryAll,
+}: {
+  drafts: GrievanceDraft[];
+  onSubmit: (id: string) => void;
+  onRetryAll: () => void;
+}) {
+  const pending = drafts.filter((d) => d.status !== "submitted");
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          Grievance drafts ({drafts.length})
+        </div>
+        {pending.length > 0 && (
+          <button
+            onClick={onRetryAll}
+            className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/70"
+          >
+            ↻ Retry all
+          </button>
+        )}
+      </div>
+      <ul className="space-y-3">
+        {drafts.map((d) => (
+          <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="font-semibold">{d.payload.subject}</div>
+                <div className="text-xs text-muted-foreground">
+                  {d.payload.ministry_or_department} · {d.payload.applicant_name}
+                </div>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                  d.status === "submitted"
+                    ? "bg-green-500/15 text-green-700"
+                    : d.status === "failed"
+                      ? "bg-destructive/15 text-destructive"
+                      : "bg-amber-500/15 text-amber-700"
+                }`}
+              >
+                {d.status}
+              </span>
+            </div>
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer text-muted-foreground">CPGRAMS payload</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted/50 p-2 font-mono">
+                {JSON.stringify(d.payload, null, 2)}
+              </pre>
+            </details>
+            {d.status === "submitted" && d.regId && (
+              <div className="mt-2 text-xs">
+                Reg ID: <span className="font-mono font-semibold">{d.regId}</span>
+              </div>
+            )}
+            {d.lastError && (
+              <div className="mt-2 text-xs text-destructive">Last error: {d.lastError}</div>
+            )}
+            {d.status !== "submitted" && (
+              <button
+                onClick={() => onSubmit(d.draftId)}
+                className="mt-2 rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+              >
+                Confirm &amp; send
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -347,11 +604,17 @@ function SchemesList({ schemes }: { schemes: Scheme[] }) {
   );
 }
 
-function PdfsList({ pdfs }: { pdfs: { url: string; templateId: string }[] }) {
+function PdfsList({ pdfs, sessionId }: { pdfs: { url: string; templateId: string }[]; sessionId: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        Filled PDFs
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Filled PDFs</div>
+        <a
+          href={`/api/session/export?sessionId=${sessionId}`}
+          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+        >
+          ⬇ Bundle JSON
+        </a>
       </div>
       <ul className="space-y-2">
         {pdfs.map((p, i) => (
@@ -379,7 +642,9 @@ function GrievanceList({ ids }: { ids: string[] }) {
       </div>
       <ul className="space-y-2 font-mono text-sm">
         {ids.map((id) => (
-          <li key={id} className="rounded-lg border border-border p-3">⚖️ {id}</li>
+          <li key={id} className="rounded-lg border border-border p-3">
+            ⚖️ {id}
+          </li>
         ))}
       </ul>
     </div>
@@ -407,6 +672,42 @@ function DocsPanel({ docs }: { docs: { kind: string; fields: Record<string, stri
   );
 }
 
+function TemplatePicker({
+  templates,
+  value,
+  onChange,
+  disabled,
+}: {
+  templates: TemplateMeta[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+        📋 Form template
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+      >
+        <option value="">— choose a template —</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name} ({t.fieldCount} fields)
+          </option>
+        ))}
+      </select>
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        The agent will auto-map your extracted docs into this template and ask you to validate.
+      </div>
+    </div>
+  );
+}
+
 function Tip({ text }: { text: string }) {
   return (
     <div className="rounded-2xl border border-border bg-accent/40 p-4 text-sm">
@@ -420,14 +721,15 @@ function Tip({ text }: { text: string }) {
 
 function Composer({
   lang,
-  sessionId,
   onSend,
   disabled,
+  mockVoice,
 }: {
   lang: LangCode;
   sessionId: string;
   onSend: (text: string) => void;
   disabled: boolean;
+  mockVoice: boolean;
 }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -435,7 +737,14 @@ function Composer({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const start = useCallback(async () => {
+  const startMock = useCallback(() => {
+    const utterance = window.prompt(
+      "🎙 Mock voice mode\nType what the user would have said (in any language). The agent will treat this as the ASR transcript:",
+    );
+    if (utterance && utterance.trim()) onSend(utterance.trim());
+  }, [onSend]);
+
+  const startReal = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
@@ -454,11 +763,15 @@ function Composer({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ audioBase64: b64, lang }),
           });
-          const data = (await res.json()) as { ok: boolean; transcript: string; translatedEnglish: string; error?: string };
+          const data = (await res.json()) as {
+            ok: boolean;
+            transcript: string;
+            translatedEnglish: string;
+            error?: string;
+          };
           if (data.ok && (data.translatedEnglish || data.transcript)) {
             onSend(data.translatedEnglish || data.transcript);
           } else {
-            // Bhashini not available — surface helpful message
             const fallback = window.prompt(
               data.error ? `Voice unavailable: ${data.error}\nType your message:` : "Type your message:",
             );
@@ -474,7 +787,7 @@ function Composer({
     } catch {
       alert("Microphone access denied or unavailable.");
     }
-  }, [lang, onSend, sessionId]);
+  }, [lang, onSend]);
 
   const stop = useCallback(() => {
     recorderRef.current?.stop();
@@ -493,20 +806,27 @@ function Composer({
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
         <button
           type="button"
-          onClick={recording ? stop : start}
+          onClick={mockVoice ? startMock : recording ? stop : startReal}
           disabled={disabled || transcribing}
           className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-2xl shadow-lg transition disabled:opacity-50 ${
             recording ? "bg-destructive text-destructive-foreground pulse-ring" : "bg-primary text-primary-foreground"
           }`}
-          aria-label={recording ? "Stop recording" : "Start recording"}
+          aria-label={mockVoice ? "Mock voice input" : recording ? "Stop recording" : "Start recording"}
+          title={mockVoice ? "Mock voice (typed simulation)" : "Real microphone"}
         >
-          {transcribing ? "⏳" : recording ? "■" : "🎙"}
+          {mockVoice ? "💬" : transcribing ? "⏳" : recording ? "■" : "🎙"}
         </button>
         <form onSubmit={submit} className="flex flex-1 items-center gap-2">
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={recording ? "Listening…" : "Type or tap the mic"}
+            placeholder={
+              mockVoice
+                ? "Mock voice on — tap 💬 to simulate, or type here"
+                : recording
+                  ? "Listening…"
+                  : "Type or tap the mic"
+            }
             disabled={recording}
             className="flex-1 rounded-full border border-input bg-card px-5 py-3 text-base outline-none focus:border-primary"
           />
@@ -538,9 +858,7 @@ function DocumentUpload({
     setBusy(true);
     try {
       const ab = await file.arrayBuffer();
-      const b64 = btoa(
-        new Uint8Array(ab).reduce((acc, b) => acc + String.fromCharCode(b), ""),
-      );
+      const b64 = btoa(new Uint8Array(ab).reduce((acc, b) => acc + String.fromCharCode(b), ""));
       const res = await fetch("/api/vision/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -586,9 +904,7 @@ function DocumentUpload({
         className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-primary-foreground"
       />
       {busy && <div className="mt-2 text-xs text-muted-foreground">Reading spatially with vision model…</div>}
-      <div className="mt-2 text-[10px] text-muted-foreground">
-        Held in memory only · UID auto-masked
-      </div>
+      <div className="mt-2 text-[10px] text-muted-foreground">Held in memory only · UID auto-masked</div>
     </div>
   );
 }
