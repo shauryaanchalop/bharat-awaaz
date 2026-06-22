@@ -687,18 +687,52 @@ function ValidationPanel({
   );
 }
 
+function PayloadDiff({ a, b }: { a: GrievancePayload; b: GrievancePayload }) {
+  const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])) as (keyof GrievancePayload)[];
+  const rows = keys
+    .map((k) => ({ k, av: (a[k] ?? "") as string, bv: (b[k] ?? "") as string }))
+    .filter((r) => r.av !== r.bv);
+  if (rows.length === 0) {
+    return (
+      <div className="mt-2 rounded-md border border-green-500/30 bg-green-500/10 p-2 text-[11px] text-green-700">
+        ✓ Edited draft matches the strict-validated payload byte-for-byte.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/30 p-2 text-[11px]">
+      <div className="mb-1 font-semibold">Diff: your edits → normalised CPGRAMS payload ({rows.length} field(s))</div>
+      <ul className="space-y-1 font-mono">
+        {rows.map((r) => (
+          <li key={r.k}>
+            <span className="font-semibold">{r.k}</span>
+            <div className="ml-2 text-red-700">- "{r.av}"</div>
+            <div className="ml-2 text-green-700">+ "{r.bv}"</div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function GrievanceDrafts({
   drafts,
   onSubmit,
+  onCancel,
+  onPriorityChange,
   onRetryAll,
   cpgramsReady,
 }: {
   drafts: GrievanceDraft[];
   onSubmit: (id: string) => void;
+  onCancel: (id: string) => void;
+  onPriorityChange: (id: string, delta: number) => void;
   onRetryAll: () => void;
   cpgramsReady: boolean;
 }) {
-  const pending = drafts.filter((d) => d.status !== "submitted");
+  const pending = drafts.filter((d) => d.status !== "submitted" && d.status !== "cancelled");
+  // Display sorted by priority desc then createdAt asc so the queue order is visible.
+  const ordered = [...drafts].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -729,7 +763,7 @@ function GrievanceDrafts({
         </div>
       </div>
       <ul className="space-y-3">
-        {drafts.map((d) => (
+        {ordered.map((d) => (
           <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -738,22 +772,31 @@ function GrievanceDrafts({
                   {d.payload.ministry_or_department} · {d.payload.applicant_name}
                 </div>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
-                  d.status === "submitted"
-                    ? "bg-green-500/15 text-green-700"
-                    : d.status === "failed"
-                      ? "bg-destructive/15 text-destructive"
-                      : d.status === "pending_key"
-                        ? "bg-blue-500/15 text-blue-700"
-                        : d.status === "draft"
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-amber-500/15 text-amber-700"
-                }`}
-              >
-                {d.status === "pending_key" ? "queued" : d.status}
-                {d.attempts ? ` · ${d.attempts}×` : ""}
-              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                {(d.priority ?? 0) !== 0 && (
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    prio {d.priority}
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                    d.status === "submitted"
+                      ? "bg-green-500/15 text-green-700"
+                      : d.status === "failed"
+                        ? "bg-destructive/15 text-destructive"
+                        : d.status === "cancelled"
+                          ? "bg-muted text-muted-foreground line-through"
+                          : d.status === "pending_key"
+                            ? "bg-blue-500/15 text-blue-700"
+                            : d.status === "draft"
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-amber-500/15 text-amber-700"
+                  }`}
+                >
+                  {d.status === "pending_key" ? "queued" : d.status}
+                  {d.attempts ? ` · ${d.attempts}×` : ""}
+                </span>
+              </div>
             </div>
 
             {d.validationIssues && d.validationIssues.length > 0 && (
@@ -767,6 +810,10 @@ function GrievanceDrafts({
                   ))}
                 </ul>
               </div>
+            )}
+
+            {d.normalisedPayload && d.status !== "submitted" && (
+              <PayloadDiff a={d.payload} b={d.normalisedPayload} />
             )}
 
             <details className="mt-2 text-xs">
@@ -789,13 +836,38 @@ function GrievanceDrafts({
                 ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
               </div>
             )}
-            {d.status !== "submitted" && d.status !== "draft" && (
-              <button
-                onClick={() => onSubmit(d.draftId)}
-                className="mt-2 rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-              >
-                Confirm &amp; send now
-              </button>
+
+            {d.status !== "submitted" && d.status !== "cancelled" && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                {d.status !== "draft" && (
+                  <button
+                    onClick={() => onSubmit(d.draftId)}
+                    className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    Confirm &amp; send now
+                  </button>
+                )}
+                <button
+                  onClick={() => onPriorityChange(d.draftId, +1)}
+                  title="Raise priority in auto-resend queue"
+                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                >
+                  ▲ prioritize
+                </button>
+                <button
+                  onClick={() => onPriorityChange(d.draftId, -1)}
+                  title="Lower priority"
+                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                >
+                  ▼
+                </button>
+                <button
+                  onClick={() => onCancel(d.draftId)}
+                  className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                >
+                  ✕ cancel
+                </button>
+              </div>
             )}
           </li>
         ))}
