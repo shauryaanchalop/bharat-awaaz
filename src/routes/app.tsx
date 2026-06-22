@@ -1316,17 +1316,39 @@ function TemplatePicker({
   const jsonRef = useRef<HTMLInputElement>(null);
   const csvRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [history, setHistory] = useState<
-    { version: number; name: string; ministry: string; scheme: string; fields: unknown[]; savedAt: number; note?: string }[]
-  >([]);
+  type SnapField = { key: string; label: string; required?: boolean; aliases?: string[]; source?: string };
+  type Snap = { version: number; name: string; ministry: string; scheme: string; fields: SnapField[]; savedAt: number; note?: string };
+  const [history, setHistory] = useState<Snap[]>([]);
   const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+  const [currentSnap, setCurrentSnap] = useState<Snap | null>(null);
+  const [diffA, setDiffA] = useState<number | null>(null);
+  const [diffB, setDiffB] = useState<number | null>(null);
 
   const loadHistory = useCallback(
     async (id: string) => {
       const r = await fetch(`/api/templates?sessionId=${sessionId}&templateId=${id}`);
-      const d = (await r.json()) as { history?: typeof history; version?: number };
+      const d = (await r.json()) as {
+        history?: Snap[];
+        version?: number;
+        template?: { name: string; ministry: string; scheme: string; fields: SnapField[] };
+      };
       setHistory(d.history ?? []);
       setCurrentVersion(d.version ?? null);
+      setCurrentSnap(
+        d.template && typeof d.version === "number"
+          ? {
+              version: d.version,
+              name: d.template.name,
+              ministry: d.template.ministry,
+              scheme: d.template.scheme,
+              fields: d.template.fields,
+              savedAt: Date.now(),
+              note: "current",
+            }
+          : null,
+      );
+      setDiffA(null);
+      setDiffB(null);
       setShowHistory(id);
     },
     [sessionId],
