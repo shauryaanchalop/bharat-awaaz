@@ -217,9 +217,11 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
         const draft: GrievanceDraft = {
           draftId: "gd_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           payload,
+          normalisedPayload: validation.ok ? validation.data : undefined,
           status: validation.ok ? "ready" : "draft",
           createdAt: Date.now(),
           attempts: 0,
+          priority: 0,
           validationIssues: validation.ok ? undefined : validation.issues,
         };
         updateSession(sessionId, (s) => s.grievanceDrafts.push(draft));
