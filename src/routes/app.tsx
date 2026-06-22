@@ -514,7 +514,9 @@ function AppPage() {
               onCancel={cancelDraft}
               onPriorityChange={prioritizeDraft}
               onRetryAll={retryAllDrafts}
+              onBulk={bulkDraftAction}
               cpgramsReady={cpgramsReady}
+              sessionId={sessionId}
             />
           )}
 
