@@ -1054,26 +1054,95 @@ function TemplatePicker({
   onChange,
   disabled,
   onAddNew,
+  sessionId,
+  onImportJson,
+  onImportCsv,
+  onRollback,
 }: {
   templates: TemplateMeta[];
   value: string;
   onChange: (id: string) => void;
   disabled: boolean;
   onAddNew: () => void;
+  sessionId: string;
+  onImportJson: (file: File) => void;
+  onImportCsv: (file: File) => void;
+  onRollback: (templateId: string, toVersion: number) => void;
 }) {
+  const jsonRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState<string | null>(null);
+  const [history, setHistory] = useState<
+    { version: number; name: string; ministry: string; scheme: string; fields: unknown[]; savedAt: number; note?: string }[]
+  >([]);
+  const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+
+  const loadHistory = useCallback(
+    async (id: string) => {
+      const r = await fetch(`/api/templates?sessionId=${sessionId}&templateId=${id}`);
+      const d = (await r.json()) as { history?: typeof history; version?: number };
+      setHistory(d.history ?? []);
+      setCurrentVersion(d.version ?? null);
+      setShowHistory(id);
+    },
+    [sessionId],
+  );
+
+  const customCount = templates.filter((t) => t.custom).length;
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-1">
         <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           📋 Form template
         </div>
-        <button
-          type="button"
-          onClick={onAddNew}
-          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
-        >
-          + new
-        </button>
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            onClick={onAddNew}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            + new
+          </button>
+          <button
+            type="button"
+            onClick={() => jsonRef.current?.click()}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            title="Bulk-import templates as JSON array"
+          >
+            ⬆ JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => csvRef.current?.click()}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            title="Bulk-import templates as CSV (one row per field)"
+          >
+            ⬆ CSV
+          </button>
+          <input
+            ref={jsonRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportJson(f);
+              if (jsonRef.current) jsonRef.current.value = "";
+            }}
+          />
+          <input
+            ref={csvRef}
+            type="file"
+            accept="text/csv,.csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportCsv(f);
+              if (csvRef.current) csvRef.current.value = "";
+            }}
+          />
+        </div>
       </div>
       <select
         value={value}
@@ -1089,18 +1158,104 @@ function TemplatePicker({
             </option>
           ))}
         </optgroup>
-        {templates.some((t) => t.custom) && (
+        {customCount > 0 && (
           <optgroup label="Your templates">
             {templates.filter((t) => t.custom).map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} ({t.fieldCount} fields)
+                {t.name} v{t.version ?? 1} ({t.fieldCount} fields)
               </option>
             ))}
           </optgroup>
         )}
       </select>
+
+      {customCount > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          <a
+            href={`/api/templates?sessionId=${sessionId}&mode=export-json`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Export JSON
+          </a>
+          <a
+            href={`/api/templates?sessionId=${sessionId}&mode=export-csv`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Export CSV
+          </a>
+        </div>
+      )}
+
+      {customCount > 0 && (
+        <div className="mt-3 border-t border-border pt-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Version history
+          </div>
+          <ul className="space-y-1 text-xs">
+            {templates
+              .filter((t) => t.custom)
+              .map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    <span className="font-mono">{t.id}</span> · v{t.version ?? 1}
+                    {t.historyCount ? ` · ${t.historyCount} older` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => loadHistory(t.id)}
+                    disabled={!(t.historyCount && t.historyCount > 0)}
+                    className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-40"
+                  >
+                    history
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="mt-3 rounded-md border border-primary/40 bg-muted/30 p-2 text-xs">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-semibold">
+              {showHistory} — versions (current v{currentVersion})
+            </span>
+            <button onClick={() => setShowHistory(null)} className="text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
+          </div>
+          {history.length === 0 ? (
+            <div className="text-muted-foreground">No prior versions yet.</div>
+          ) : (
+            <ul className="space-y-1">
+              {history
+                .slice()
+                .sort((a, b) => b.version - a.version)
+                .map((h) => (
+                  <li key={h.version} className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5">
+                    <span>
+                      <span className="font-semibold">v{h.version}</span> · {h.fields.length} fields ·{" "}
+                      <span className="text-muted-foreground">{new Date(h.savedAt).toLocaleString()}</span>
+                      {h.note && <span className="ml-1 italic text-muted-foreground">({h.note})</span>}
+                    </span>
+                    <button
+                      onClick={() => {
+                        onRollback(showHistory, h.version);
+                        setShowHistory(null);
+                      }}
+                      className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
+                    >
+                      ↺ rollback
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="mt-2 text-[11px] text-muted-foreground">
-        The agent auto-maps your extracted docs into the chosen layout before asking you to validate.
+        The agent auto-maps your extracted docs into the chosen layout. Re-registering a template archives the prior version for rollback.
       </div>
     </div>
   );
