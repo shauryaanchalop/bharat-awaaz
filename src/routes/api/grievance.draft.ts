@@ -1,8 +1,9 @@
 // Grievance draft workflow with:
 // - strict CPGRAMS schema validation (action:"validate")
 // - per-field diff (payload vs normalisedPayload) surfaced via GET
-// - manual queue controls: submit / cancel / prioritize / retry-all
+// - manual queue controls: submit / cancel / prioritize / retry-all + bulk
 // - automatic resend queuing (status flips, key-arrival, timeouts), priority-sorted
+// - append-only audit trail per draft (edits, queue actions, submit results)
 
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -14,13 +15,36 @@ import {
   CpgramsValidationError,
 } from "@/lib/cpgrams/client.server";
 import { validateCpgramsPayload } from "@/lib/cpgrams/schema";
-import { getOrCreateSession, updateSession, emit, type GrievanceDraft } from "@/lib/agent/state";
+import {
+  getOrCreateSession,
+  updateSession,
+  emit,
+  type GrievanceDraft,
+  type GrievancePayload,
+  type DraftAuditEvent,
+} from "@/lib/agent/state";
 
 function newDraftId() {
   return "gd_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-type SubmitOutcome = { ok: true; regId: string } | { ok: false; error: string; status: GrievanceDraft["status"] };
+function pushAudit(d: GrievanceDraft, ev: Omit<DraftAuditEvent, "ts"> & { ts?: number }) {
+  if (!d.auditEvents) d.auditEvents = [];
+  d.auditEvents.push({ ts: ev.ts ?? Date.now(), ...ev });
+}
+
+function diffPayloads(a: GrievancePayload, b: GrievancePayload) {
+  const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])) as (keyof GrievancePayload)[];
+  const changes: { field: string; from: string; to: string }[] = [];
+  for (const k of keys) {
+    const av = (a[k] ?? "") as string;
+    const bv = (b[k] ?? "") as string;
+    if (av !== bv) changes.push({ field: String(k), from: av, to: bv });
+  }
+  return changes;
+}
+
+type SubmitOutcome = { ok: true; regId: string } | { ok: false; error: string; status: GrievanceDraft["status"]; issues?: { field: string; message: string }[] };
 
 async function attemptSubmit(sessionId: string, draftId: string): Promise<SubmitOutcome> {
   const s = getOrCreateSession(sessionId);
@@ -33,6 +57,7 @@ async function attemptSubmit(sessionId: string, draftId: string): Promise<Submit
     if (d) {
       d.attempts += 1;
       d.lastAttemptAt = Date.now();
+      pushAudit(d, { action: "submit_attempt", detail: `attempt #${d.attempts}` });
     }
   });
 
@@ -48,6 +73,7 @@ async function attemptSubmit(sessionId: string, draftId: string): Promise<Submit
         d.validationIssues = undefined;
         const v = validateCpgramsPayload(d.payload);
         if (v.ok) d.normalisedPayload = v.data;
+        pushAudit(d, { action: "submit_success", regId: result.regId, detail: result.acknowledgement });
       }
       st.grievances.push({ regId: result.regId, subject: draft.payload.subject, filedAt: Date.now() });
     });
@@ -70,9 +96,10 @@ async function attemptSubmit(sessionId: string, draftId: string): Promise<Submit
         d.status = status;
         d.lastError = msg;
         d.validationIssues = issues;
+        pushAudit(d, { action: "submit_failed", detail: msg });
       }
     });
-    return { ok: false, error: msg, status };
+    return { ok: false, error: msg, status, issues };
   }
 }
 
@@ -121,9 +148,12 @@ export const Route = createFileRoute("/api/grievance/draft")({
             | "validate"
             | "status"
             | "cancel"
-            | "prioritize";
+            | "prioritize"
+            | "bulk";
           sessionId: string;
           draftId?: string;
+          draftIds?: string[];
+          op?: "cancel" | "prioritize" | "deprioritize" | "submit";
           payload?: GrievanceDraft["payload"];
           priority?: number;
         };
@@ -158,12 +188,13 @@ export const Route = createFileRoute("/api/grievance/draft")({
           if (!body.payload) return new Response("payload required", { status: 400 });
           const validation = validateCpgramsPayload(body.payload);
           const block = isOutOfPurview(body.payload.description);
+          const now = Date.now();
           const draft: GrievanceDraft = {
             draftId: newDraftId(),
             payload: body.payload,
             normalisedPayload: validation.ok ? validation.data : undefined,
             status: validation.ok && !block ? "ready" : "draft",
-            createdAt: Date.now(),
+            createdAt: now,
             attempts: 0,
             priority: 0,
             validationIssues: block
@@ -171,6 +202,7 @@ export const Route = createFileRoute("/api/grievance/draft")({
               : validation.ok
                 ? undefined
                 : validation.issues,
+            auditEvents: [{ ts: now, action: "create", detail: validation.ok ? "draft ready" : "schema invalid" }],
           };
           updateSession(sessionId, (st) => st.grievanceDrafts.push(draft));
           emit(sessionId, { type: "grievance_draft", draft });
@@ -185,6 +217,7 @@ export const Route = createFileRoute("/api/grievance/draft")({
           const block = isOutOfPurview(body.payload.description);
           updateSession(sessionId, (st) => {
             const d = st.grievanceDrafts[idx];
+            const changes = diffPayloads(d.payload, body.payload!);
             d.payload = body.payload!;
             d.normalisedPayload = validation.ok ? validation.data : undefined;
             d.status = validation.ok && !block ? "ready" : "draft";
@@ -193,6 +226,13 @@ export const Route = createFileRoute("/api/grievance/draft")({
               : validation.ok
                 ? undefined
                 : validation.issues;
+            pushAudit(d, { action: "update", changes, detail: `${changes.length} field edit(s)` });
+            if (!validation.ok || block) {
+              pushAudit(d, {
+                action: "validation_failed",
+                detail: (d.validationIssues ?? []).map((i) => `${i.field}:${i.message}`).join("; "),
+              });
+            }
           });
           emit(sessionId, { type: "grievance_draft", draft: s.grievanceDrafts[idx] });
           return Response.json({ ok: true, draft: s.grievanceDrafts[idx] });
@@ -205,6 +245,7 @@ export const Route = createFileRoute("/api/grievance/draft")({
             if (d && d.status !== "submitted") {
               d.status = "cancelled";
               d.lastError = undefined;
+              pushAudit(d, { action: "cancel", detail: "user cancelled" });
             }
           });
           const d = s.grievanceDrafts.find((x) => x.draftId === body.draftId);
@@ -217,7 +258,10 @@ export const Route = createFileRoute("/api/grievance/draft")({
           const delta = typeof body.priority === "number" ? body.priority : 1;
           updateSession(sessionId, (st) => {
             const d = st.grievanceDrafts.find((x) => x.draftId === body.draftId);
-            if (d) d.priority = (d.priority ?? 0) + delta;
+            if (d) {
+              d.priority = (d.priority ?? 0) + delta;
+              pushAudit(d, { action: "prioritize", priority: d.priority, detail: `Δ${delta >= 0 ? "+" : ""}${delta}` });
+            }
           });
           const d = s.grievanceDrafts.find((x) => x.draftId === body.draftId);
           if (d) {
@@ -225,6 +269,44 @@ export const Route = createFileRoute("/api/grievance/draft")({
             emit(sessionId, { type: "grievance_draft", draft: d });
           }
           return Response.json({ ok: true, priority: d?.priority ?? 0 });
+        }
+
+        if (action === "bulk") {
+          const ids = body.draftIds ?? [];
+          const op = body.op;
+          if (!op || ids.length === 0) return Response.json({ ok: false, error: "op + draftIds required" }, { status: 400 });
+          if (op === "submit") {
+            let drained = 0;
+            for (const id of ids) {
+              const r = await attemptSubmit(sessionId, id);
+              if (r.ok) drained++;
+            }
+            return Response.json({ ok: true, op, count: ids.length, drained });
+          }
+          updateSession(sessionId, (st) => {
+            for (const id of ids) {
+              const d = st.grievanceDrafts.find((x) => x.draftId === id);
+              if (!d) continue;
+              if (op === "cancel") {
+                if (d.status !== "submitted") {
+                  d.status = "cancelled";
+                  d.lastError = undefined;
+                  pushAudit(d, { action: "cancel", detail: "bulk cancel" });
+                }
+              } else if (op === "prioritize") {
+                d.priority = (d.priority ?? 0) + 1;
+                pushAudit(d, { action: "prioritize", priority: d.priority, detail: "bulk +1" });
+              } else if (op === "deprioritize") {
+                d.priority = (d.priority ?? 0) - 1;
+                pushAudit(d, { action: "prioritize", priority: d.priority, detail: "bulk -1" });
+              }
+            }
+          });
+          for (const id of ids) {
+            const d = s.grievanceDrafts.find((x) => x.draftId === id);
+            if (d) emit(sessionId, { type: "grievance_draft", draft: d });
+          }
+          return Response.json({ ok: true, op, count: ids.length });
         }
 
         if (action === "submit") {
