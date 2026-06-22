@@ -40,20 +40,24 @@ export type ValidationRecord = {
   changes: { field: string; from: string; to: string }[];
 };
 
+export type GrievancePayload = {
+  applicant_name: string;
+  ministry_or_department: string;
+  subject: string;
+  description: string;
+  previous_application_id?: string;
+  state?: string;
+  district?: string;
+  contact_phone?: string;
+  contact_email?: string;
+};
+
 export type GrievanceDraft = {
   draftId: string;
-  payload: {
-    applicant_name: string;
-    ministry_or_department: string;
-    subject: string;
-    description: string;
-    previous_application_id?: string;
-    state?: string;
-    district?: string;
-    contact_phone?: string;
-    contact_email?: string;
-  };
-  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
+  payload: GrievancePayload;
+  /** Last normalised payload from strict-schema validation. Used for diff vs payload. */
+  normalisedPayload?: GrievancePayload;
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed" | "cancelled";
   regId?: string;
   createdAt: number;
   submittedAt?: number;
@@ -61,6 +65,8 @@ export type GrievanceDraft = {
   attempts: number;
   lastAttemptAt?: number;
   validationIssues?: { field: string; message: string }[];
+  /** Higher value drains first in the auto-resend queue. Default 0. */
+  priority: number;
 };
 
 export type CustomTemplateField = {
@@ -71,6 +77,16 @@ export type CustomTemplateField = {
   source?: "aadhaar" | "ration" | "income" | "demographics" | "user";
 };
 
+export type TemplateVersionSnapshot = {
+  version: number;
+  name: string;
+  ministry: string;
+  scheme: string;
+  fields: CustomTemplateField[];
+  savedAt: number;
+  note?: string;
+};
+
 export type CustomTemplate = {
   id: string;
   name: string;
@@ -78,6 +94,8 @@ export type CustomTemplate = {
   scheme: string;
   fields: CustomTemplateField[];
   createdAt: number;
+  version: number;
+  history: TemplateVersionSnapshot[];
 };
 
 export type AgentEvent =
