@@ -37,6 +37,15 @@ type GrievancePayload = {
   contact_email?: string;
 };
 
+type DraftAuditEvent = {
+  ts: number;
+  action: string;
+  detail?: string;
+  changes?: { field: string; from: string; to: string }[];
+  regId?: string;
+  priority?: number;
+};
+
 type GrievanceDraft = {
   draftId: string;
   payload: GrievancePayload;
@@ -46,7 +55,9 @@ type GrievanceDraft = {
   lastError?: string;
   attempts?: number;
   priority?: number;
+  submittedAt?: number;
   validationIssues?: { field: string; message: string }[];
+  auditEvents?: DraftAuditEvent[];
 };
 
 type AgentEvent =
