@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Bharat Awaaz" },
+      { name: "description", content: "A voice-first AI agent that helps marginalized citizens access government schemes, extract document data, and fill PDF forms." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Bharat Awaaz" },
+      { property: "og:description", content: "A voice-first AI agent that helps marginalized citizens access government schemes, extract document data, and fill PDF forms." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Bharat Awaaz" },
+      { name: "twitter:description", content: "A voice-first AI agent that helps marginalized citizens access government schemes, extract document data, and fill PDF forms." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/jHyY2eB03xS5gUhoFFFXIbOIjY22/social-images/social-1782123587926-ChatGPT_Image_Jun_22,_2026,_03_49_16_PM.webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/jHyY2eB03xS5gUhoFFFXIbOIjY22/social-images/social-1782123587926-ChatGPT_Image_Jun_22,_2026,_03_49_16_PM.webp" },
     ],
     links: [
       {
