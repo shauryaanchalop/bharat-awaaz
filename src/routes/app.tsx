@@ -1741,6 +1741,80 @@ function TemplateBuilder({
   );
 }
 
+function TemplateVersionDiff({
+  a,
+  b,
+}: {
+  a: { version: number; fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[] };
+  b: { version: number; fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[] };
+}) {
+  const sig = (f: { label: string; required?: boolean; aliases?: string[]; source?: string }) =>
+    JSON.stringify({
+      label: f.label,
+      required: !!f.required,
+      aliases: (f.aliases ?? []).slice().sort(),
+      source: f.source ?? "user",
+    });
+  const aMap = new Map(a.fields.map((f) => [f.key, f]));
+  const bMap = new Map(b.fields.map((f) => [f.key, f]));
+  const keys = Array.from(new Set([...aMap.keys(), ...bMap.keys()])).sort();
+  type Row = { key: string; kind: "added" | "removed" | "changed" | "same"; a?: typeof a.fields[number]; b?: typeof b.fields[number] };
+  const rows: Row[] = keys.map((k) => {
+    const fa = aMap.get(k);
+    const fb = bMap.get(k);
+    if (!fa) return { key: k, kind: "added", b: fb };
+    if (!fb) return { key: k, kind: "removed", a: fa };
+    if (sig(fa) !== sig(fb)) return { key: k, kind: "changed", a: fa, b: fb };
+    return { key: k, kind: "same", a: fa, b: fb };
+  });
+  const counts = {
+    added: rows.filter((r) => r.kind === "added").length,
+    removed: rows.filter((r) => r.kind === "removed").length,
+    changed: rows.filter((r) => r.kind === "changed").length,
+  };
+  return (
+    <div className="mt-2 rounded-md border border-border bg-background/60 p-2">
+      <div className="mb-1 text-[11px] font-semibold">
+        Diff v{a.version} → v{b.version} · +{counts.added} added · −{counts.removed} removed ·{" "}
+        ~{counts.changed} changed
+      </div>
+      <ul className="space-y-1 font-mono text-[11px]">
+        {rows
+          .filter((r) => r.kind !== "same")
+          .map((r) => (
+            <li key={r.key} className="rounded border border-border/60 bg-background p-1.5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={
+                    r.kind === "added"
+                      ? "rounded bg-green-500/15 px-1.5 text-green-700"
+                      : r.kind === "removed"
+                        ? "rounded bg-red-500/15 px-1.5 text-red-700"
+                        : "rounded bg-amber-500/15 px-1.5 text-amber-700"
+                  }
+                >
+                  {r.kind}
+                </span>
+                <span className="font-semibold">{r.key}</span>
+              </div>
+              {r.kind === "changed" && (
+                <div className="ml-2 mt-1">
+                  <div className="text-red-700">- {sig(r.a!)}</div>
+                  <div className="text-green-700">+ {sig(r.b!)}</div>
+                </div>
+              )}
+              {r.kind === "added" && <div className="ml-2 text-green-700">+ {sig(r.b!)}</div>}
+              {r.kind === "removed" && <div className="ml-2 text-red-700">- {sig(r.a!)}</div>}
+            </li>
+          ))}
+        {rows.every((r) => r.kind === "same") && (
+          <li className="text-green-700">✓ Identical field mappings.</li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
 function Tip({ text }: { text: string }) {
   return (
     <div className="rounded-2xl border border-border bg-accent/40 p-4 text-sm">
