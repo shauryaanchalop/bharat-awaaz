@@ -1490,35 +1490,82 @@ function TemplatePicker({
               ✕
             </button>
           </div>
-          {history.length === 0 ? (
-            <div className="text-muted-foreground">No prior versions yet.</div>
-          ) : (
-            <ul className="space-y-1">
-              {history
-                .slice()
-                .sort((a, b) => b.version - a.version)
-                .map((h) => (
-                  <li key={h.version} className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5">
-                    <span>
-                      <span className="font-semibold">v{h.version}</span> · {h.fields.length} fields ·{" "}
-                      <span className="text-muted-foreground">{new Date(h.savedAt).toLocaleString()}</span>
-                      {h.note && <span className="ml-1 italic text-muted-foreground">({h.note})</span>}
-                    </span>
-                    <button
-                      onClick={() => {
-                        onRollback(showHistory, h.version);
-                        setShowHistory(null);
-                      }}
-                      className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
-                    >
-                      ↺ rollback
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          )}
+
+          {(() => {
+            const all: Snap[] = currentSnap ? [currentSnap, ...history] : [...history];
+            if (all.length === 0) {
+              return <div className="text-muted-foreground">No prior versions yet.</div>;
+            }
+            const pickHandler = (v: number) => () => {
+              if (diffA === v) setDiffA(null);
+              else if (diffB === v) setDiffB(null);
+              else if (diffA == null) setDiffA(v);
+              else if (diffB == null) setDiffB(v);
+              else {
+                setDiffA(v);
+                setDiffB(null);
+              }
+            };
+            const snapA = diffA != null ? all.find((s) => s.version === diffA) : null;
+            const snapB = diffB != null ? all.find((s) => s.version === diffB) : null;
+            return (
+              <>
+                <div className="mb-1 text-[10px] text-muted-foreground">
+                  Tick two versions to compare field mappings before rolling back.
+                </div>
+                <ul className="space-y-1">
+                  {all
+                    .slice()
+                    .sort((a, b) => b.version - a.version)
+                    .map((h) => {
+                      const isCurrent = h.version === currentVersion;
+                      const checked = diffA === h.version || diffB === h.version;
+                      return (
+                        <li
+                          key={h.version}
+                          className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5"
+                        >
+                          <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <input type="checkbox" checked={checked} onChange={pickHandler(h.version)} />
+                            <span className="truncate">
+                              <span className="font-semibold">v{h.version}</span>
+                              {isCurrent ? " (current)" : ""} · {h.fields.length} fields ·{" "}
+                              <span className="text-muted-foreground">
+                                {new Date(h.savedAt).toLocaleString()}
+                              </span>
+                              {h.note && (
+                                <span className="ml-1 italic text-muted-foreground">({h.note})</span>
+                              )}
+                            </span>
+                          </label>
+                          {!isCurrent && (
+                            <button
+                              onClick={() => {
+                                onRollback(showHistory, h.version);
+                                setShowHistory(null);
+                              }}
+                              className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
+                            >
+                              ↺ rollback
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+
+                {snapA && snapB && <TemplateVersionDiff a={snapA} b={snapB} />}
+                {(snapA && !snapB) || (!snapA && snapB) ? (
+                  <div className="mt-2 text-[10px] text-muted-foreground">
+                    Pick one more version to render the field-mapping diff.
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
       )}
+
 
       <div className="mt-2 text-[11px] text-muted-foreground">
         The agent auto-maps your extracted docs into the chosen layout. Re-registering a template archives the prior version for rollback.
