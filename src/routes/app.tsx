@@ -302,6 +302,33 @@ function AppPage() {
     [sessionId],
   );
 
+  const cancelDraft = useCallback(
+    async (draftId: string) => {
+      await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", sessionId, draftId }),
+      });
+      setDrafts((arr) => arr.map((x) => (x.draftId === draftId ? { ...x, status: "cancelled" } : x)));
+    },
+    [sessionId],
+  );
+
+  const prioritizeDraft = useCallback(
+    async (draftId: string, delta: number) => {
+      const r = await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prioritize", sessionId, draftId, priority: delta }),
+      });
+      const d = (await r.json()) as { ok: boolean; priority?: number };
+      if (d.ok) {
+        setDrafts((arr) => arr.map((x) => (x.draftId === draftId ? { ...x, priority: d.priority } : x)));
+      }
+    },
+    [sessionId],
+  );
+
   const retryAllDrafts = useCallback(async () => {
     const r = await fetch("/api/grievance/draft", {
       method: "POST",
