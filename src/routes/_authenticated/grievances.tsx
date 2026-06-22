@@ -1,0 +1,141 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth/hooks";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { Plus, Trash2 } from "lucide-react";
+import { StatusBadge } from "./dashboard";
+
+export const Route = createFileRoute("/_authenticated/grievances")({
+  head: () => ({ meta: [{ title: "My Grievances — Bharat-Awaaz" }] }),
+  component: GrievancesPage,
+});
+
+type Grievance = {
+  id: string;
+  subject: string;
+  ministry: string | null;
+  description: string | null;
+  status: string;
+  registration_id: string | null;
+  priority: number;
+  created_at: string;
+};
+
+function GrievancesPage() {
+  const { user } = useAuth();
+  const [items, setItems] = useState<Grievance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ subject: "", ministry: "", description: "" });
+
+  async function refresh() {
+    const { data } = await supabase.from("grievances").select("*").order("created_at", { ascending: false });
+    setItems((data as Grievance[]) ?? []);
+    setLoading(false);
+  }
+  useEffect(() => { if (user) refresh(); }, [user]);
+
+  async function createOne() {
+    if (!user) return;
+    if (form.subject.length < 10 || form.description.length < 30) {
+      toast.error("Subject ≥10 chars, description ≥30 chars (CPGRAMS rules).");
+      return;
+    }
+    const { data, error } = await supabase.from("grievances").insert({
+      user_id: user.id,
+      subject: form.subject,
+      ministry: form.ministry,
+      description: form.description,
+      status: "ready",
+      payload: { ...form, applicant_name: user.email },
+    }).select().single();
+    if (error) { toast.error(error.message); return; }
+    await supabase.from("audit_events").insert({ user_id: user.id, grievance_id: data.id, action: "create", detail: "Manual draft" });
+    toast.success("Grievance saved.");
+    setOpen(false);
+    setForm({ subject: "", ministry: "", description: "" });
+    refresh();
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Delete this grievance?")) return;
+    await supabase.from("grievances").delete().eq("id", id);
+    refresh();
+  }
+
+  async function setPriority(id: string, delta: number) {
+    const g = items.find((i) => i.id === id);
+    if (!g) return;
+    await supabase.from("grievances").update({ priority: g.priority + delta }).eq("id", id);
+    refresh();
+  }
+
+  return (
+    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">My Grievances</h1>
+          <p className="text-muted-foreground">Drafts, queued submissions, and CPGRAMS responses.</p>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button><Plus className="w-4 h-4 mr-2" /> New grievance</Button></DialogTrigger>
+          <DialogContent>
+            <DialogHeader><DialogTitle>New grievance</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Subject</Label>
+                <Input value={form.subject} onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))} placeholder="Min 10 characters" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ministry / Department</Label>
+                <Input value={form.ministry} onChange={(e) => setForm((f) => ({ ...f, ministry: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Description</Label>
+                <Textarea rows={6} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Min 30 characters" />
+              </div>
+              <Button onClick={createOne} className="w-full">Save grievance</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {loading ? <p className="text-sm text-muted-foreground">Loading…</p> :
+        items.length === 0 ? (
+          <Card className="p-12 text-center text-muted-foreground">
+            No grievances yet. Use the voice agent or click "New grievance".
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {items.map((g) => (
+              <Card key={g.id} className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="font-semibold">{g.subject}</h3>
+                      <StatusBadge status={g.status} regId={g.registration_id} />
+                      {g.priority !== 0 && <span className="text-xs px-2 py-0.5 rounded bg-muted">P{g.priority}</span>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{g.ministry ?? "—"}</p>
+                    {g.description && <p className="text-sm mt-2 line-clamp-2">{g.description}</p>}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => setPriority(g.id, 1)}>↑</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setPriority(g.id, -1)}>↓</Button>
+                    <Button size="sm" variant="ghost" onClick={() => remove(g.id)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}

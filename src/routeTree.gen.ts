@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedGrievancesRouteImport } from './routes/_authenticated/grievances'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as ApiVisionExtractRouteImport } from './routes/api/vision.extract'
 import { Route as ApiSessionExportRouteImport } from './routes/api/session.export'
 import { Route as ApiGrievanceDraftRouteImport } from './routes/api/grievance.draft'
@@ -20,9 +26,18 @@ import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
 import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
 import { Route as ApiAgentResumeRouteImport } from './routes/api/agent.resume'
 
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +49,26 @@ const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
   id: '/api/templates',
   path: '/api/templates',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGrievancesRoute = AuthenticatedGrievancesRouteImport.update({
+  id: '/grievances',
+  path: '/grievances',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const ApiVisionExtractRoute = ApiVisionExtractRouteImport.update({
   id: '/api/vision/extract',
@@ -74,6 +109,11 @@ const ApiAgentResumeRoute = ApiAgentResumeRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/grievances': typeof AuthenticatedGrievancesRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -86,6 +126,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
+  '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/grievances': typeof AuthenticatedGrievancesRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -98,7 +143,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/app': typeof AppRoute
+  '/auth': typeof AuthRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/grievances': typeof AuthenticatedGrievancesRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -113,6 +164,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/auth'
+    | '/admin'
+    | '/dashboard'
+    | '/grievances'
+    | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -125,6 +181,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/app'
+    | '/auth'
+    | '/admin'
+    | '/dashboard'
+    | '/grievances'
+    | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -136,7 +197,13 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/_authenticated'
     | '/app'
+    | '/auth'
+    | '/_authenticated/admin'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/grievances'
+    | '/_authenticated/profile'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -149,7 +216,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AppRoute: typeof AppRoute
+  AuthRoute: typeof AuthRoute
   ApiTemplatesRoute: typeof ApiTemplatesRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
@@ -162,11 +231,25 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app': {
       id: '/app'
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -182,6 +265,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/templates'
       preLoaderRoute: typeof ApiTemplatesRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/grievances': {
+      id: '/_authenticated/grievances'
+      path: '/grievances'
+      fullPath: '/grievances'
+      preLoaderRoute: typeof AuthenticatedGrievancesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/api/vision/extract': {
       id: '/api/vision/extract'
@@ -235,9 +346,28 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedGrievancesRoute: typeof AuthenticatedGrievancesRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedGrievancesRoute: AuthenticatedGrievancesRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AppRoute: AppRoute,
+  AuthRoute: AuthRoute,
   ApiTemplatesRoute: ApiTemplatesRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,

@@ -86,17 +86,26 @@ function Landing() {
           </div>
         </div>
 
-        <Link
-          to="/app"
-          search={{ lang }}
-          className="mt-12 inline-flex items-center gap-3 rounded-full bg-primary px-10 py-5 text-lg font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition hover:translate-y-[-2px] hover:shadow-xl"
-        >
-          <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
-          </span>
-          {t.start}
-        </Link>
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
+          <Link
+            to="/app"
+            search={{ lang }}
+            className="inline-flex items-center gap-3 rounded-full bg-primary px-10 py-5 text-lg font-semibold text-primary-foreground shadow-lg shadow-primary/30 transition hover:translate-y-[-2px] hover:shadow-xl"
+          >
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
+            </span>
+            {t.start}
+          </Link>
+          <Link
+            to="/auth"
+            className="inline-flex items-center gap-2 rounded-full border-2 border-primary bg-background px-8 py-5 text-lg font-semibold text-primary transition hover:bg-primary/5"
+          >
+            Sign in / Dashboard
+          </Link>
+        </div>
+
 
         <div className="mt-20 grid w-full max-w-4xl gap-4 sm:grid-cols-2 md:grid-cols-4">
           {[
