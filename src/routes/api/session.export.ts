@@ -169,7 +169,7 @@ export const Route = createFileRoute("/api/session/export")({
           });
         }
 
-
+        if (mode === "audit") {
           const history = validationId
             ? s.validationHistory.filter((v) => v.id === validationId)
             : s.validationHistory;
