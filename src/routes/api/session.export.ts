@@ -53,7 +53,10 @@ export const Route = createFileRoute("/api/session/export")({
           | "full"
           | "docs"
           | "audit"
-          | "audit-csv";
+          | "audit-csv"
+          | "grievance-audit"
+          | "grievance-audit-csv";
+        const draftId = url.searchParams.get("draftId");
         const validationId = url.searchParams.get("validationId");
         if (!sessionId) return new Response("sessionId required", { status: 400 });
         const s = getOrCreateSession(sessionId);
@@ -85,6 +88,83 @@ export const Route = createFileRoute("/api/session/export")({
             headers: {
               "Content-Type": "text/csv",
               "Content-Disposition": `attachment; filename="bharat-awaaz-audit-${sessionId}.csv"`,
+            },
+          });
+        }
+
+        if (mode === "grievance-audit" || mode === "grievance-audit-csv") {
+          const drafts = draftId
+            ? s.grievanceDrafts.filter((d) => d.draftId === draftId)
+            : s.grievanceDrafts;
+          if (mode === "grievance-audit") {
+            const payload = {
+              schema: "bharat-awaaz.grievance-audit.v1",
+              exportedAt: new Date().toISOString(),
+              sessionId,
+              drafts: drafts.map((d) => ({
+                draftId: d.draftId,
+                status: d.status,
+                priority: d.priority ?? 0,
+                createdAt: d.createdAt,
+                submittedAt: d.submittedAt,
+                lastAttemptAt: d.lastAttemptAt,
+                attempts: d.attempts,
+                regId: d.regId,
+                lastError: d.lastError,
+                validationIssues: d.validationIssues,
+                payload: d.payload,
+                normalisedPayload: d.normalisedPayload,
+                diff:
+                  d.normalisedPayload
+                    ? Object.keys({ ...d.payload, ...d.normalisedPayload })
+                        .map((k) => ({
+                          field: k,
+                          edited: (d.payload as Record<string, string>)[k] ?? "",
+                          normalised: (d.normalisedPayload as Record<string, string>)[k] ?? "",
+                        }))
+                        .filter((r) => r.edited !== r.normalised)
+                    : [],
+                events: d.auditEvents ?? [],
+              })),
+            };
+            const fname = draftId ? `bharat-awaaz-grievance-${draftId}.json` : `bharat-awaaz-grievance-${sessionId}.json`;
+            return new Response(JSON.stringify(payload, null, 2), {
+              headers: {
+                "Content-Type": "application/json",
+                "Content-Disposition": `attachment; filename="${fname}"`,
+              },
+            });
+          }
+          const rows: string[][] = [[
+            "draftId",
+            "ts",
+            "action",
+            "status_after",
+            "priority",
+            "regId",
+            "detail",
+            "field_changes",
+          ]];
+          for (const d of drafts) {
+            for (const ev of d.auditEvents ?? []) {
+              rows.push([
+                d.draftId,
+                new Date(ev.ts).toISOString(),
+                ev.action,
+                d.status,
+                String(ev.priority ?? d.priority ?? 0),
+                ev.regId ?? d.regId ?? "",
+                ev.detail ?? "",
+                (ev.changes ?? []).map((c) => `${c.field}:"${c.from}"→"${c.to}"`).join(" | "),
+              ]);
+            }
+          }
+          const csv = rows.map((r) => r.map(csvCell).join(",")).join("\n");
+          const fname = draftId ? `bharat-awaaz-grievance-${draftId}.csv` : `bharat-awaaz-grievance-${sessionId}.csv`;
+          return new Response(csv, {
+            headers: {
+              "Content-Type": "text/csv",
+              "Content-Disposition": `attachment; filename="${fname}"`,
             },
           });
         }

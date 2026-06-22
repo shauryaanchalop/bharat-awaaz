@@ -37,6 +37,15 @@ type GrievancePayload = {
   contact_email?: string;
 };
 
+type DraftAuditEvent = {
+  ts: number;
+  action: string;
+  detail?: string;
+  changes?: { field: string; from: string; to: string }[];
+  regId?: string;
+  priority?: number;
+};
+
 type GrievanceDraft = {
   draftId: string;
   payload: GrievancePayload;
@@ -46,7 +55,9 @@ type GrievanceDraft = {
   lastError?: string;
   attempts?: number;
   priority?: number;
+  submittedAt?: number;
   validationIssues?: { field: string; message: string }[];
+  auditEvents?: DraftAuditEvent[];
 };
 
 type AgentEvent =
@@ -341,6 +352,23 @@ function AppPage() {
     }
   }, [sessionId]);
 
+  const bulkDraftAction = useCallback(
+    async (op: "cancel" | "prioritize" | "deprioritize" | "submit", draftIds: string[]) => {
+      if (draftIds.length === 0) return;
+      const r = await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "bulk", sessionId, op, draftIds }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string; drained?: number };
+      if (!d.ok) setError(d.error ?? "Bulk action failed");
+      else if (op === "submit" && typeof d.drained === "number" && d.drained < draftIds.length) {
+        setError(`${draftIds.length - d.drained} draft(s) still pending — CPGRAMS key not active yet.`);
+      }
+    },
+    [sessionId],
+  );
+
   const registerTemplate = useCallback(
     async (template: {
       id: string;
@@ -486,7 +514,9 @@ function AppPage() {
               onCancel={cancelDraft}
               onPriorityChange={prioritizeDraft}
               onRetryAll={retryAllDrafts}
+              onBulk={bulkDraftAction}
               cpgramsReady={cpgramsReady}
+              sessionId={sessionId}
             />
           )}
 
@@ -715,31 +745,84 @@ function PayloadDiff({ a, b }: { a: GrievancePayload; b: GrievancePayload }) {
   );
 }
 
+function copyText(text: string) {
+  try {
+    navigator.clipboard.writeText(text);
+  } catch {
+    /* ignore */
+  }
+}
+
+function diffRowsCsv(a: GrievancePayload, b: GrievancePayload) {
+  const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])) as (keyof GrievancePayload)[];
+  const header = "field,edited,normalised";
+  const lines = [header];
+  for (const k of keys) {
+    const av = (a[k] ?? "") as string;
+    const bv = (b[k] ?? "") as string;
+    if (av === bv) continue;
+    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+    lines.push(`${esc(String(k))},${esc(av)},${esc(bv)}`);
+  }
+  return lines.join("\n");
+}
+
+function diffRowsJson(a: GrievancePayload, b: GrievancePayload) {
+  const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])) as (keyof GrievancePayload)[];
+  return JSON.stringify(
+    keys
+      .map((k) => ({ field: String(k), edited: (a[k] ?? "") as string, normalised: (b[k] ?? "") as string }))
+      .filter((r) => r.edited !== r.normalised),
+    null,
+    2,
+  );
+}
+
 function GrievanceDrafts({
   drafts,
   onSubmit,
   onCancel,
   onPriorityChange,
   onRetryAll,
+  onBulk,
   cpgramsReady,
+  sessionId,
 }: {
   drafts: GrievanceDraft[];
   onSubmit: (id: string) => void;
   onCancel: (id: string) => void;
   onPriorityChange: (id: string, delta: number) => void;
   onRetryAll: () => void;
+  onBulk: (op: "cancel" | "prioritize" | "deprioritize" | "submit", draftIds: string[]) => void;
   cpgramsReady: boolean;
+  sessionId: string;
 }) {
   const pending = drafts.filter((d) => d.status !== "submitted" && d.status !== "cancelled");
-  // Display sorted by priority desc then createdAt asc so the queue order is visible.
   const ordered = [...drafts].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectablePending = ordered.filter((d) => d.status !== "submitted" && d.status !== "cancelled");
+  const allSelected = selectablePending.length > 0 && selectablePending.every((d) => selected.has(d.draftId));
+  const selectedIds = selectablePending.filter((d) => selected.has(d.draftId)).map((d) => d.draftId);
+
+  const runBulk = (op: "cancel" | "prioritize" | "deprioritize" | "submit") => {
+    onBulk(op, selectedIds);
+    if (op === "cancel" || op === "submit") setSelected(new Set());
+  };
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           Grievance drafts ({drafts.length})
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
               cpgramsReady ? "bg-green-500/15 text-green-700" : "bg-amber-500/15 text-amber-700"
@@ -752,6 +835,19 @@ function GrievanceDrafts({
           >
             CPGRAMS {cpgramsReady ? "live" : "pending"}
           </span>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=grievance-audit`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            title="Full audit log: edits, validations, queue actions, submit results"
+          >
+            ⬇ Audit JSON
+          </a>
+          <a
+            href={`/api/session/export?sessionId=${sessionId}&mode=grievance-audit-csv`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Audit CSV
+          </a>
           {pending.length > 0 && (
             <button
               onClick={onRetryAll}
@@ -762,115 +858,263 @@ function GrievanceDrafts({
           )}
         </div>
       </div>
+
+      {selectablePending.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={(e) =>
+                setSelected(
+                  e.target.checked ? new Set(selectablePending.map((d) => d.draftId)) : new Set(),
+                )
+              }
+            />
+            Select all pending ({selectablePending.length})
+          </label>
+          <span className="text-muted-foreground">· {selectedIds.length} selected</span>
+          <div className="ml-auto flex flex-wrap gap-1">
+            <button
+              disabled={selectedIds.length === 0}
+              onClick={() => runBulk("prioritize")}
+              className="rounded-md border border-border px-2 py-1 hover:bg-muted disabled:opacity-40"
+            >
+              ▲ prioritize
+            </button>
+            <button
+              disabled={selectedIds.length === 0}
+              onClick={() => runBulk("deprioritize")}
+              className="rounded-md border border-border px-2 py-1 hover:bg-muted disabled:opacity-40"
+            >
+              ▼ deprioritize
+            </button>
+            <button
+              disabled={selectedIds.length === 0 || !cpgramsReady}
+              onClick={() => runBulk("submit")}
+              title={cpgramsReady ? "Submit selected now" : "Waiting for CPGRAMS_API_KEY"}
+              className="rounded-md bg-primary px-2 py-1 text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            >
+              ✓ submit selected
+            </button>
+            <button
+              disabled={selectedIds.length === 0}
+              onClick={() => runBulk("cancel")}
+              className="rounded-md border border-destructive/40 px-2 py-1 text-destructive hover:bg-destructive/10 disabled:opacity-40"
+            >
+              ✕ cancel selected
+            </button>
+          </div>
+        </div>
+      )}
+
       <ul className="space-y-3">
-        {ordered.map((d) => (
-          <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-semibold">{d.payload.subject}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {d.payload.ministry_or_department} · {d.payload.applicant_name}
+        {ordered.map((d) => {
+          const issueFields = new Set((d.validationIssues ?? []).map((i) => i.field));
+          const checkable = d.status !== "submitted" && d.status !== "cancelled";
+          return (
+            <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start gap-2">
+                  {checkable && (
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={selected.has(d.draftId)}
+                      onChange={() => toggle(d.draftId)}
+                      aria-label={`Select draft ${d.draftId}`}
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{d.payload.subject}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {d.payload.ministry_or_department} · {d.payload.applicant_name}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {(d.priority ?? 0) !== 0 && (
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      prio {d.priority}
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                      d.status === "submitted"
+                        ? "bg-green-500/15 text-green-700"
+                        : d.status === "failed"
+                          ? "bg-destructive/15 text-destructive"
+                          : d.status === "cancelled"
+                            ? "bg-muted text-muted-foreground line-through"
+                            : d.status === "pending_key"
+                              ? "bg-blue-500/15 text-blue-700"
+                              : d.status === "draft"
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-amber-500/15 text-amber-700"
+                    }`}
+                  >
+                    {d.status === "pending_key" ? "queued" : d.status}
+                    {d.attempts ? ` · ${d.attempts}×` : ""}
+                  </span>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {(d.priority ?? 0) !== 0 && (
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                    prio {d.priority}
-                  </span>
+
+              {d.status === "submitted" && d.regId && (
+                <div className="mt-2 rounded-md border border-green-500/40 bg-green-500/10 p-2 text-xs text-green-800">
+                  ✓ CPGRAMS accepted ·{" "}
+                  <span className="font-mono font-semibold">{d.regId}</span>
+                  {d.submittedAt && (
+                    <span className="ml-2 text-muted-foreground">
+                      {new Date(d.submittedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {d.validationIssues && d.validationIssues.length > 0 && (
+                <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                  <div className="mb-1 font-semibold">
+                    CPGRAMS rejected {d.validationIssues.length} field(s):
+                  </div>
+                  <table className="w-full font-mono text-[11px]">
+                    <tbody>
+                      {d.validationIssues.map((i, idx) => (
+                        <tr key={idx} className="border-t border-destructive/20">
+                          <td className="py-1 pr-2 align-top font-semibold">{i.field}</td>
+                          <td className="py-1 pr-2 align-top">
+                            <span className="text-destructive/80">
+                              "{(d.payload as Record<string, string>)[i.field] ?? ""}"
+                            </span>
+                          </td>
+                          <td className="py-1 align-top text-destructive">{i.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {d.normalisedPayload && d.status !== "submitted" && (
+                <PayloadDiff a={d.payload} b={d.normalisedPayload} />
+              )}
+
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer text-muted-foreground">CPGRAMS payload</summary>
+                <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted/50 p-2 font-mono">
+                  {JSON.stringify(d.payload, null, 2)}
+                </pre>
+                {Object.keys(d.payload).map((k) =>
+                  issueFields.has(k) ? (
+                    <div key={k} className="ml-1 text-[10px] text-destructive">
+                      ⚠ field <span className="font-mono">{k}</span> flagged above
+                    </div>
+                  ) : null,
                 )}
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
-                    d.status === "submitted"
-                      ? "bg-green-500/15 text-green-700"
-                      : d.status === "failed"
-                        ? "bg-destructive/15 text-destructive"
-                        : d.status === "cancelled"
-                          ? "bg-muted text-muted-foreground line-through"
-                          : d.status === "pending_key"
-                            ? "bg-blue-500/15 text-blue-700"
-                            : d.status === "draft"
-                              ? "bg-muted text-muted-foreground"
-                              : "bg-amber-500/15 text-amber-700"
-                  }`}
+              </details>
+
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <button
+                  onClick={() => copyText(JSON.stringify(d.normalisedPayload ?? d.payload, null, 2))}
+                  className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+                  title="Copy the final (normalised if valid, otherwise raw) CPGRAMS payload as JSON"
                 >
-                  {d.status === "pending_key" ? "queued" : d.status}
-                  {d.attempts ? ` · ${d.attempts}×` : ""}
-                </span>
+                  ⧉ payload JSON
+                </button>
+                {d.normalisedPayload && (
+                  <>
+                    <button
+                      onClick={() => copyText(diffRowsJson(d.payload, d.normalisedPayload!))}
+                      className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+                    >
+                      ⧉ diff JSON
+                    </button>
+                    <button
+                      onClick={() => copyText(diffRowsCsv(d.payload, d.normalisedPayload!))}
+                      className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+                    >
+                      ⧉ diff CSV
+                    </button>
+                  </>
+                )}
+                <a
+                  href={`/api/session/export?sessionId=${sessionId}&mode=grievance-audit&draftId=${d.draftId}`}
+                  className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+                >
+                  ⬇ this draft (JSON)
+                </a>
+                <a
+                  href={`/api/session/export?sessionId=${sessionId}&mode=grievance-audit-csv&draftId=${d.draftId}`}
+                  className="rounded-md border border-border px-2 py-1 hover:bg-muted"
+                >
+                  ⬇ events CSV
+                </a>
               </div>
-            </div>
 
-            {d.validationIssues && d.validationIssues.length > 0 && (
-              <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-                <div className="mb-1 font-semibold">Strict CPGRAMS schema rejects this payload:</div>
-                <ul className="list-disc space-y-0.5 pl-4">
-                  {d.validationIssues.map((i, idx) => (
-                    <li key={idx}>
-                      <span className="font-mono">{i.field}</span> — {i.message}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+              {d.lastError && !d.validationIssues && (
+                <div className="mt-2 text-xs text-destructive">Last error: {d.lastError}</div>
+              )}
+              {d.status === "pending_key" && (
+                <div className="mt-2 text-[11px] text-muted-foreground">
+                  ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
+                </div>
+              )}
 
-            {d.normalisedPayload && d.status !== "submitted" && (
-              <PayloadDiff a={d.payload} b={d.normalisedPayload} />
-            )}
+              {d.auditEvents && d.auditEvents.length > 0 && (
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">
+                    Audit trail ({d.auditEvents.length})
+                  </summary>
+                  <ul className="mt-1 space-y-0.5 font-mono text-[11px]">
+                    {d.auditEvents.map((ev, i) => (
+                      <li key={i}>
+                        <span className="text-muted-foreground">
+                          {new Date(ev.ts).toLocaleTimeString()}
+                        </span>{" "}
+                        <span className="font-semibold">{ev.action}</span>
+                        {ev.detail ? ` — ${ev.detail}` : ""}
+                        {ev.regId ? ` · regId=${ev.regId}` : ""}
+                        {typeof ev.priority === "number" ? ` · prio=${ev.priority}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
 
-            <details className="mt-2 text-xs">
-              <summary className="cursor-pointer text-muted-foreground">CPGRAMS payload</summary>
-              <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted/50 p-2 font-mono">
-                {JSON.stringify(d.payload, null, 2)}
-              </pre>
-            </details>
-
-            {d.status === "submitted" && d.regId && (
-              <div className="mt-2 text-xs">
-                Reg ID: <span className="font-mono font-semibold">{d.regId}</span>
-              </div>
-            )}
-            {d.lastError && !d.validationIssues && (
-              <div className="mt-2 text-xs text-destructive">Last error: {d.lastError}</div>
-            )}
-            {d.status === "pending_key" && (
-              <div className="mt-2 text-[11px] text-muted-foreground">
-                ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
-              </div>
-            )}
-
-            {d.status !== "submitted" && d.status !== "cancelled" && (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {d.status !== "draft" && (
+              {d.status !== "submitted" && d.status !== "cancelled" && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {d.status !== "draft" && (
+                    <button
+                      onClick={() => onSubmit(d.draftId)}
+                      className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                    >
+                      Confirm &amp; send now
+                    </button>
+                  )}
                   <button
-                    onClick={() => onSubmit(d.draftId)}
-                    className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                    onClick={() => onPriorityChange(d.draftId, +1)}
+                    title="Raise priority in auto-resend queue"
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
                   >
-                    Confirm &amp; send now
+                    ▲ prioritize
                   </button>
-                )}
-                <button
-                  onClick={() => onPriorityChange(d.draftId, +1)}
-                  title="Raise priority in auto-resend queue"
-                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                >
-                  ▲ prioritize
-                </button>
-                <button
-                  onClick={() => onPriorityChange(d.draftId, -1)}
-                  title="Lower priority"
-                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
-                >
-                  ▼
-                </button>
-                <button
-                  onClick={() => onCancel(d.draftId)}
-                  className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-                >
-                  ✕ cancel
-                </button>
-              </div>
-            )}
-          </li>
-        ))}
+                  <button
+                    onClick={() => onPriorityChange(d.draftId, -1)}
+                    title="Lower priority"
+                    className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    onClick={() => onCancel(d.draftId)}
+                    className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                  >
+                    ✕ cancel
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -1072,17 +1316,39 @@ function TemplatePicker({
   const jsonRef = useRef<HTMLInputElement>(null);
   const csvRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [history, setHistory] = useState<
-    { version: number; name: string; ministry: string; scheme: string; fields: unknown[]; savedAt: number; note?: string }[]
-  >([]);
+  type SnapField = { key: string; label: string; required?: boolean; aliases?: string[]; source?: string };
+  type Snap = { version: number; name: string; ministry: string; scheme: string; fields: SnapField[]; savedAt: number; note?: string };
+  const [history, setHistory] = useState<Snap[]>([]);
   const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+  const [currentSnap, setCurrentSnap] = useState<Snap | null>(null);
+  const [diffA, setDiffA] = useState<number | null>(null);
+  const [diffB, setDiffB] = useState<number | null>(null);
 
   const loadHistory = useCallback(
     async (id: string) => {
       const r = await fetch(`/api/templates?sessionId=${sessionId}&templateId=${id}`);
-      const d = (await r.json()) as { history?: typeof history; version?: number };
+      const d = (await r.json()) as {
+        history?: Snap[];
+        version?: number;
+        template?: { name: string; ministry: string; scheme: string; fields: SnapField[] };
+      };
       setHistory(d.history ?? []);
       setCurrentVersion(d.version ?? null);
+      setCurrentSnap(
+        d.template && typeof d.version === "number"
+          ? {
+              version: d.version,
+              name: d.template.name,
+              ministry: d.template.ministry,
+              scheme: d.template.scheme,
+              fields: d.template.fields,
+              savedAt: Date.now(),
+              note: "current",
+            }
+          : null,
+      );
+      setDiffA(null);
+      setDiffB(null);
       setShowHistory(id);
     },
     [sessionId],
@@ -1224,35 +1490,82 @@ function TemplatePicker({
               ✕
             </button>
           </div>
-          {history.length === 0 ? (
-            <div className="text-muted-foreground">No prior versions yet.</div>
-          ) : (
-            <ul className="space-y-1">
-              {history
-                .slice()
-                .sort((a, b) => b.version - a.version)
-                .map((h) => (
-                  <li key={h.version} className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5">
-                    <span>
-                      <span className="font-semibold">v{h.version}</span> · {h.fields.length} fields ·{" "}
-                      <span className="text-muted-foreground">{new Date(h.savedAt).toLocaleString()}</span>
-                      {h.note && <span className="ml-1 italic text-muted-foreground">({h.note})</span>}
-                    </span>
-                    <button
-                      onClick={() => {
-                        onRollback(showHistory, h.version);
-                        setShowHistory(null);
-                      }}
-                      className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
-                    >
-                      ↺ rollback
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          )}
+
+          {(() => {
+            const all: Snap[] = currentSnap ? [currentSnap, ...history] : [...history];
+            if (all.length === 0) {
+              return <div className="text-muted-foreground">No prior versions yet.</div>;
+            }
+            const pickHandler = (v: number) => () => {
+              if (diffA === v) setDiffA(null);
+              else if (diffB === v) setDiffB(null);
+              else if (diffA == null) setDiffA(v);
+              else if (diffB == null) setDiffB(v);
+              else {
+                setDiffA(v);
+                setDiffB(null);
+              }
+            };
+            const snapA = diffA != null ? all.find((s) => s.version === diffA) : null;
+            const snapB = diffB != null ? all.find((s) => s.version === diffB) : null;
+            return (
+              <>
+                <div className="mb-1 text-[10px] text-muted-foreground">
+                  Tick two versions to compare field mappings before rolling back.
+                </div>
+                <ul className="space-y-1">
+                  {all
+                    .slice()
+                    .sort((a, b) => b.version - a.version)
+                    .map((h) => {
+                      const isCurrent = h.version === currentVersion;
+                      const checked = diffA === h.version || diffB === h.version;
+                      return (
+                        <li
+                          key={h.version}
+                          className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5"
+                        >
+                          <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                            <input type="checkbox" checked={checked} onChange={pickHandler(h.version)} />
+                            <span className="truncate">
+                              <span className="font-semibold">v{h.version}</span>
+                              {isCurrent ? " (current)" : ""} · {h.fields.length} fields ·{" "}
+                              <span className="text-muted-foreground">
+                                {new Date(h.savedAt).toLocaleString()}
+                              </span>
+                              {h.note && (
+                                <span className="ml-1 italic text-muted-foreground">({h.note})</span>
+                              )}
+                            </span>
+                          </label>
+                          {!isCurrent && (
+                            <button
+                              onClick={() => {
+                                onRollback(showHistory, h.version);
+                                setShowHistory(null);
+                              }}
+                              className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
+                            >
+                              ↺ rollback
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+
+                {snapA && snapB && <TemplateVersionDiff a={snapA} b={snapB} />}
+                {(snapA && !snapB) || (!snapA && snapB) ? (
+                  <div className="mt-2 text-[10px] text-muted-foreground">
+                    Pick one more version to render the field-mapping diff.
+                  </div>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
       )}
+
 
       <div className="mt-2 text-[11px] text-muted-foreground">
         The agent auto-maps your extracted docs into the chosen layout. Re-registering a template archives the prior version for rollback.
@@ -1424,6 +1737,80 @@ function TemplateBuilder({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+function TemplateVersionDiff({
+  a,
+  b,
+}: {
+  a: { version: number; fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[] };
+  b: { version: number; fields: { key: string; label: string; required?: boolean; aliases?: string[]; source?: string }[] };
+}) {
+  const sig = (f: { label: string; required?: boolean; aliases?: string[]; source?: string }) =>
+    JSON.stringify({
+      label: f.label,
+      required: !!f.required,
+      aliases: (f.aliases ?? []).slice().sort(),
+      source: f.source ?? "user",
+    });
+  const aMap = new Map(a.fields.map((f) => [f.key, f]));
+  const bMap = new Map(b.fields.map((f) => [f.key, f]));
+  const keys = Array.from(new Set([...aMap.keys(), ...bMap.keys()])).sort();
+  type Row = { key: string; kind: "added" | "removed" | "changed" | "same"; a?: typeof a.fields[number]; b?: typeof b.fields[number] };
+  const rows: Row[] = keys.map((k) => {
+    const fa = aMap.get(k);
+    const fb = bMap.get(k);
+    if (!fa) return { key: k, kind: "added", b: fb };
+    if (!fb) return { key: k, kind: "removed", a: fa };
+    if (sig(fa) !== sig(fb)) return { key: k, kind: "changed", a: fa, b: fb };
+    return { key: k, kind: "same", a: fa, b: fb };
+  });
+  const counts = {
+    added: rows.filter((r) => r.kind === "added").length,
+    removed: rows.filter((r) => r.kind === "removed").length,
+    changed: rows.filter((r) => r.kind === "changed").length,
+  };
+  return (
+    <div className="mt-2 rounded-md border border-border bg-background/60 p-2">
+      <div className="mb-1 text-[11px] font-semibold">
+        Diff v{a.version} → v{b.version} · +{counts.added} added · −{counts.removed} removed ·{" "}
+        ~{counts.changed} changed
+      </div>
+      <ul className="space-y-1 font-mono text-[11px]">
+        {rows
+          .filter((r) => r.kind !== "same")
+          .map((r) => (
+            <li key={r.key} className="rounded border border-border/60 bg-background p-1.5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={
+                    r.kind === "added"
+                      ? "rounded bg-green-500/15 px-1.5 text-green-700"
+                      : r.kind === "removed"
+                        ? "rounded bg-red-500/15 px-1.5 text-red-700"
+                        : "rounded bg-amber-500/15 px-1.5 text-amber-700"
+                  }
+                >
+                  {r.kind}
+                </span>
+                <span className="font-semibold">{r.key}</span>
+              </div>
+              {r.kind === "changed" && (
+                <div className="ml-2 mt-1">
+                  <div className="text-red-700">- {sig(r.a!)}</div>
+                  <div className="text-green-700">+ {sig(r.b!)}</div>
+                </div>
+              )}
+              {r.kind === "added" && <div className="ml-2 text-green-700">+ {sig(r.b!)}</div>}
+              {r.kind === "removed" && <div className="ml-2 text-red-700">- {sig(r.a!)}</div>}
+            </li>
+          ))}
+        {rows.every((r) => r.kind === "same") && (
+          <li className="text-green-700">✓ Identical field mappings.</li>
+        )}
+      </ul>
     </div>
   );
 }

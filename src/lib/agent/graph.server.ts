@@ -214,15 +214,20 @@ export async function runAgentTurn(sessionId: string, userEnglishText: string) {
         if (block) return { ok: false, error: `Out of CPGRAMS purview (${block}).` };
         const { validateCpgramsPayload } = await import("../cpgrams/schema");
         const validation = validateCpgramsPayload(payload);
+        const now = Date.now();
         const draft: GrievanceDraft = {
-          draftId: "gd_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          draftId: "gd_" + now.toString(36) + Math.random().toString(36).slice(2, 6),
           payload,
           normalisedPayload: validation.ok ? validation.data : undefined,
           status: validation.ok ? "ready" : "draft",
-          createdAt: Date.now(),
+          createdAt: now,
           attempts: 0,
           priority: 0,
           validationIssues: validation.ok ? undefined : validation.issues,
+          auditEvents: [
+            { ts: now, action: "create", detail: validation.ok ? "draft ready" : "strict-schema invalid on create" },
+            ...(validation.ok ? [] : [{ ts: now, action: "validation_failed" as const, detail: validation.issues.map((i) => `${i.field}:${i.message}`).join("; ") }]),
+          ],
         };
         updateSession(sessionId, (s) => s.grievanceDrafts.push(draft));
         emit(sessionId, { type: "grievance_draft", draft });

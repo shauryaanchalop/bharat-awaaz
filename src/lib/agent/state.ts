@@ -52,6 +52,23 @@ export type GrievancePayload = {
   contact_email?: string;
 };
 
+export type DraftAuditEvent = {
+  ts: number;
+  action:
+    | "create"
+    | "update"
+    | "cancel"
+    | "prioritize"
+    | "submit_attempt"
+    | "submit_success"
+    | "submit_failed"
+    | "validation_failed";
+  detail?: string;
+  changes?: { field: string; from: string; to: string }[];
+  regId?: string;
+  priority?: number;
+};
+
 export type GrievanceDraft = {
   draftId: string;
   payload: GrievancePayload;
@@ -67,6 +84,8 @@ export type GrievanceDraft = {
   validationIssues?: { field: string; message: string }[];
   /** Higher value drains first in the auto-resend queue. Default 0. */
   priority: number;
+  /** Append-only audit trail of every edit / queue action / submit attempt. */
+  auditEvents: DraftAuditEvent[];
 };
 
 export type CustomTemplateField = {
