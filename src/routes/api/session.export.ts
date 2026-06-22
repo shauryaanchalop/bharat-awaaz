@@ -53,7 +53,10 @@ export const Route = createFileRoute("/api/session/export")({
           | "full"
           | "docs"
           | "audit"
-          | "audit-csv";
+          | "audit-csv"
+          | "grievance-audit"
+          | "grievance-audit-csv";
+        const draftId = url.searchParams.get("draftId");
         const validationId = url.searchParams.get("validationId");
         if (!sessionId) return new Response("sessionId required", { status: 400 });
         const s = getOrCreateSession(sessionId);
