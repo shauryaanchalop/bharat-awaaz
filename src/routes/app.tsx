@@ -506,6 +506,10 @@ function AppPage() {
             onChange={onTemplateChange}
             disabled={thinking || !!pendingValidation}
             onAddNew={() => setShowTplBuilder(true)}
+            sessionId={sessionId}
+            onImportJson={importTemplatesJson}
+            onImportCsv={importTemplatesCsv}
+            onRollback={rollbackTemplate}
           />
           {showTplBuilder && (
             <TemplateBuilder
