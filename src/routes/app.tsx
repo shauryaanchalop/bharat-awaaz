@@ -352,6 +352,23 @@ function AppPage() {
     }
   }, [sessionId]);
 
+  const bulkDraftAction = useCallback(
+    async (op: "cancel" | "prioritize" | "deprioritize" | "submit", draftIds: string[]) => {
+      if (draftIds.length === 0) return;
+      const r = await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "bulk", sessionId, op, draftIds }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string; drained?: number };
+      if (!d.ok) setError(d.error ?? "Bulk action failed");
+      else if (op === "submit" && typeof d.drained === "number" && d.drained < draftIds.length) {
+        setError(`${draftIds.length - d.drained} draft(s) still pending — CPGRAMS key not active yet.`);
+      }
+    },
+    [sessionId],
+  );
+
   const registerTemplate = useCallback(
     async (template: {
       id: string;
