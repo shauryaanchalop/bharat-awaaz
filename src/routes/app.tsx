@@ -365,6 +365,60 @@ function AppPage() {
     [sessionId, loadTemplates],
   );
 
+  const importTemplatesJson = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      let parsed: { templates: unknown[] };
+      try {
+        const j = JSON.parse(text);
+        parsed = Array.isArray(j) ? { templates: j } : j;
+      } catch {
+        setError("Invalid JSON file.");
+        return;
+      }
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import-json", sessionId, templates: parsed.templates }),
+      });
+      const d = (await r.json()) as { ok: boolean; imported: number; errors: string[] };
+      if (d.errors?.length) setError(`Imported ${d.imported}. Skipped: ${d.errors.join(" · ")}`);
+      else setError(null);
+      loadTemplates();
+    },
+    [sessionId, loadTemplates],
+  );
+
+  const importTemplatesCsv = useCallback(
+    async (file: File) => {
+      const csv = await file.text();
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import-csv", sessionId, csv }),
+      });
+      const d = (await r.json()) as { ok: boolean; imported: number; parsed: number; errors: string[] };
+      if (d.errors?.length) setError(`Imported ${d.imported}/${d.parsed}. Skipped: ${d.errors.join(" · ")}`);
+      else setError(null);
+      loadTemplates();
+    },
+    [sessionId, loadTemplates],
+  );
+
+  const rollbackTemplate = useCallback(
+    async (templateId: string, toVersion: number) => {
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rollback", sessionId, templateId, toVersion }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string };
+      if (!d.ok) setError(d.error ?? "Rollback failed");
+      loadTemplates();
+    },
+    [sessionId, loadTemplates],
+  );
+
   return (
     <div className="min-h-screen pb-32">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--saffron)] via-white to-[var(--india-green)]" />
