@@ -25,23 +25,27 @@ type FieldProposal = {
   required: boolean;
 };
 
+type GrievancePayload = {
+  applicant_name: string;
+  ministry_or_department: string;
+  subject: string;
+  description: string;
+  previous_application_id?: string;
+  state?: string;
+  district?: string;
+  contact_phone?: string;
+  contact_email?: string;
+};
+
 type GrievanceDraft = {
   draftId: string;
-  payload: {
-    applicant_name: string;
-    ministry_or_department: string;
-    subject: string;
-    description: string;
-    previous_application_id?: string;
-    state?: string;
-    district?: string;
-    contact_phone?: string;
-    contact_email?: string;
-  };
-  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
+  payload: GrievancePayload;
+  normalisedPayload?: GrievancePayload;
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed" | "cancelled";
   regId?: string;
   lastError?: string;
   attempts?: number;
+  priority?: number;
   validationIssues?: { field: string; message: string }[];
 };
 
