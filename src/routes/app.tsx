@@ -1961,22 +1961,63 @@ function DocumentUpload({
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const downscaleImage = async (file: File): Promise<{ b64: string; mime: string }> => {
+    if (!file.type.startsWith("image/")) {
+      const ab = await file.arrayBuffer();
+      const bytes = new Uint8Array(ab);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return { b64: btoa(bin), mime: file.type || "application/octet-stream" };
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = url;
+      });
+      const MAX = 1600;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      const b64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1] ?? "";
+      return { b64, mime: "image/jpeg" };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const upload = async (file: File) => {
     setBusy(true);
     try {
-      const ab = await file.arrayBuffer();
-      const b64 = btoa(new Uint8Array(ab).reduce((acc, b) => acc + String.fromCharCode(b), ""));
+      const { b64, mime } = await downscaleImage(file);
       const res = await fetch("/api/vision/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, kind, imageBase64: b64, mimeType: file.type || "image/jpeg" }),
+        body: JSON.stringify({ sessionId, kind, imageBase64: b64, mimeType: mime }),
       });
-      const data = (await res.json()) as { ok: boolean; fields?: Record<string, string>; error?: string };
+      const text = await res.text();
+      let data: { ok?: boolean; fields?: Record<string, string>; error?: string } = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        alert(
+          `Document extraction failed (HTTP ${res.status}). The image may be too large or the vision service is temporarily unavailable. Try a smaller/clearer photo.`,
+        );
+        return;
+      }
       if (data.ok && data.fields) {
         onUploaded({ id: `d_${Date.now()}`, kind, fields: data.fields });
       } else {
         alert("Document extraction failed: " + (data.error ?? "unknown"));
       }
+    } catch (e) {
+      alert("Upload failed: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
