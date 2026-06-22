@@ -483,6 +483,8 @@ function AppPage() {
             <GrievanceDrafts
               drafts={drafts}
               onSubmit={submitDraft}
+              onCancel={cancelDraft}
+              onPriorityChange={prioritizeDraft}
               onRetryAll={retryAllDrafts}
               cpgramsReady={cpgramsReady}
             />
