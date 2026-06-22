@@ -73,7 +73,16 @@ type Scheme = {
 
 type Msg = { role: "user" | "assistant"; text: string; lang?: string; audioUrl?: string };
 
-type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number; custom?: boolean };
+type TemplateMeta = {
+  id: string;
+  name: string;
+  ministry: string;
+  scheme: string;
+  fieldCount: number;
+  custom?: boolean;
+  version?: number;
+  historyCount?: number;
+};
 
 type ValidationRecord = {
   id: string;
