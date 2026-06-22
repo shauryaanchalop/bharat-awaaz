@@ -25,23 +25,27 @@ type FieldProposal = {
   required: boolean;
 };
 
+type GrievancePayload = {
+  applicant_name: string;
+  ministry_or_department: string;
+  subject: string;
+  description: string;
+  previous_application_id?: string;
+  state?: string;
+  district?: string;
+  contact_phone?: string;
+  contact_email?: string;
+};
+
 type GrievanceDraft = {
   draftId: string;
-  payload: {
-    applicant_name: string;
-    ministry_or_department: string;
-    subject: string;
-    description: string;
-    previous_application_id?: string;
-    state?: string;
-    district?: string;
-    contact_phone?: string;
-    contact_email?: string;
-  };
-  status: "draft" | "ready" | "pending_key" | "submitted" | "failed";
+  payload: GrievancePayload;
+  normalisedPayload?: GrievancePayload;
+  status: "draft" | "ready" | "pending_key" | "submitted" | "failed" | "cancelled";
   regId?: string;
   lastError?: string;
   attempts?: number;
+  priority?: number;
   validationIssues?: { field: string; message: string }[];
 };
 
@@ -69,7 +73,16 @@ type Scheme = {
 
 type Msg = { role: "user" | "assistant"; text: string; lang?: string; audioUrl?: string };
 
-type TemplateMeta = { id: string; name: string; ministry: string; scheme: string; fieldCount: number; custom?: boolean };
+type TemplateMeta = {
+  id: string;
+  name: string;
+  ministry: string;
+  scheme: string;
+  fieldCount: number;
+  custom?: boolean;
+  version?: number;
+  historyCount?: number;
+};
 
 type ValidationRecord = {
   id: string;
@@ -289,6 +302,33 @@ function AppPage() {
     [sessionId],
   );
 
+  const cancelDraft = useCallback(
+    async (draftId: string) => {
+      await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", sessionId, draftId }),
+      });
+      setDrafts((arr) => arr.map((x) => (x.draftId === draftId ? { ...x, status: "cancelled" } : x)));
+    },
+    [sessionId],
+  );
+
+  const prioritizeDraft = useCallback(
+    async (draftId: string, delta: number) => {
+      const r = await fetch("/api/grievance/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prioritize", sessionId, draftId, priority: delta }),
+      });
+      const d = (await r.json()) as { ok: boolean; priority?: number };
+      if (d.ok) {
+        setDrafts((arr) => arr.map((x) => (x.draftId === draftId ? { ...x, priority: d.priority } : x)));
+      }
+    },
+    [sessionId],
+  );
+
   const retryAllDrafts = useCallback(async () => {
     const r = await fetch("/api/grievance/draft", {
       method: "POST",
@@ -321,6 +361,60 @@ function AppPage() {
       }
       loadTemplates();
       return true;
+    },
+    [sessionId, loadTemplates],
+  );
+
+  const importTemplatesJson = useCallback(
+    async (file: File) => {
+      const text = await file.text();
+      let parsed: { templates: unknown[] };
+      try {
+        const j = JSON.parse(text);
+        parsed = Array.isArray(j) ? { templates: j } : j;
+      } catch {
+        setError("Invalid JSON file.");
+        return;
+      }
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import-json", sessionId, templates: parsed.templates }),
+      });
+      const d = (await r.json()) as { ok: boolean; imported: number; errors: string[] };
+      if (d.errors?.length) setError(`Imported ${d.imported}. Skipped: ${d.errors.join(" · ")}`);
+      else setError(null);
+      loadTemplates();
+    },
+    [sessionId, loadTemplates],
+  );
+
+  const importTemplatesCsv = useCallback(
+    async (file: File) => {
+      const csv = await file.text();
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import-csv", sessionId, csv }),
+      });
+      const d = (await r.json()) as { ok: boolean; imported: number; parsed: number; errors: string[] };
+      if (d.errors?.length) setError(`Imported ${d.imported}/${d.parsed}. Skipped: ${d.errors.join(" · ")}`);
+      else setError(null);
+      loadTemplates();
+    },
+    [sessionId, loadTemplates],
+  );
+
+  const rollbackTemplate = useCallback(
+    async (templateId: string, toVersion: number) => {
+      const r = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rollback", sessionId, templateId, toVersion }),
+      });
+      const d = (await r.json()) as { ok: boolean; error?: string };
+      if (!d.ok) setError(d.error ?? "Rollback failed");
+      loadTemplates();
     },
     [sessionId, loadTemplates],
   );
@@ -389,6 +483,8 @@ function AppPage() {
             <GrievanceDrafts
               drafts={drafts}
               onSubmit={submitDraft}
+              onCancel={cancelDraft}
+              onPriorityChange={prioritizeDraft}
               onRetryAll={retryAllDrafts}
               cpgramsReady={cpgramsReady}
             />
@@ -410,6 +506,10 @@ function AppPage() {
             onChange={onTemplateChange}
             disabled={thinking || !!pendingValidation}
             onAddNew={() => setShowTplBuilder(true)}
+            sessionId={sessionId}
+            onImportJson={importTemplatesJson}
+            onImportCsv={importTemplatesCsv}
+            onRollback={rollbackTemplate}
           />
           {showTplBuilder && (
             <TemplateBuilder
@@ -587,18 +687,52 @@ function ValidationPanel({
   );
 }
 
+function PayloadDiff({ a, b }: { a: GrievancePayload; b: GrievancePayload }) {
+  const keys = Array.from(new Set([...Object.keys(a), ...Object.keys(b)])) as (keyof GrievancePayload)[];
+  const rows = keys
+    .map((k) => ({ k, av: (a[k] ?? "") as string, bv: (b[k] ?? "") as string }))
+    .filter((r) => r.av !== r.bv);
+  if (rows.length === 0) {
+    return (
+      <div className="mt-2 rounded-md border border-green-500/30 bg-green-500/10 p-2 text-[11px] text-green-700">
+        ✓ Edited draft matches the strict-validated payload byte-for-byte.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-md border border-border bg-muted/30 p-2 text-[11px]">
+      <div className="mb-1 font-semibold">Diff: your edits → normalised CPGRAMS payload ({rows.length} field(s))</div>
+      <ul className="space-y-1 font-mono">
+        {rows.map((r) => (
+          <li key={r.k}>
+            <span className="font-semibold">{r.k}</span>
+            <div className="ml-2 text-red-700">- "{r.av}"</div>
+            <div className="ml-2 text-green-700">+ "{r.bv}"</div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function GrievanceDrafts({
   drafts,
   onSubmit,
+  onCancel,
+  onPriorityChange,
   onRetryAll,
   cpgramsReady,
 }: {
   drafts: GrievanceDraft[];
   onSubmit: (id: string) => void;
+  onCancel: (id: string) => void;
+  onPriorityChange: (id: string, delta: number) => void;
   onRetryAll: () => void;
   cpgramsReady: boolean;
 }) {
-  const pending = drafts.filter((d) => d.status !== "submitted");
+  const pending = drafts.filter((d) => d.status !== "submitted" && d.status !== "cancelled");
+  // Display sorted by priority desc then createdAt asc so the queue order is visible.
+  const ordered = [...drafts].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -629,7 +763,7 @@ function GrievanceDrafts({
         </div>
       </div>
       <ul className="space-y-3">
-        {drafts.map((d) => (
+        {ordered.map((d) => (
           <li key={d.draftId} className="rounded-lg border border-border p-3 text-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -638,22 +772,31 @@ function GrievanceDrafts({
                   {d.payload.ministry_or_department} · {d.payload.applicant_name}
                 </div>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
-                  d.status === "submitted"
-                    ? "bg-green-500/15 text-green-700"
-                    : d.status === "failed"
-                      ? "bg-destructive/15 text-destructive"
-                      : d.status === "pending_key"
-                        ? "bg-blue-500/15 text-blue-700"
-                        : d.status === "draft"
-                          ? "bg-muted text-muted-foreground"
-                          : "bg-amber-500/15 text-amber-700"
-                }`}
-              >
-                {d.status === "pending_key" ? "queued" : d.status}
-                {d.attempts ? ` · ${d.attempts}×` : ""}
-              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                {(d.priority ?? 0) !== 0 && (
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    prio {d.priority}
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wider ${
+                    d.status === "submitted"
+                      ? "bg-green-500/15 text-green-700"
+                      : d.status === "failed"
+                        ? "bg-destructive/15 text-destructive"
+                        : d.status === "cancelled"
+                          ? "bg-muted text-muted-foreground line-through"
+                          : d.status === "pending_key"
+                            ? "bg-blue-500/15 text-blue-700"
+                            : d.status === "draft"
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-amber-500/15 text-amber-700"
+                  }`}
+                >
+                  {d.status === "pending_key" ? "queued" : d.status}
+                  {d.attempts ? ` · ${d.attempts}×` : ""}
+                </span>
+              </div>
             </div>
 
             {d.validationIssues && d.validationIssues.length > 0 && (
@@ -667,6 +810,10 @@ function GrievanceDrafts({
                   ))}
                 </ul>
               </div>
+            )}
+
+            {d.normalisedPayload && d.status !== "submitted" && (
+              <PayloadDiff a={d.payload} b={d.normalisedPayload} />
             )}
 
             <details className="mt-2 text-xs">
@@ -689,13 +836,38 @@ function GrievanceDrafts({
                 ⏳ Queued — will auto-send the instant CPGRAMS_API_KEY is added (polled every 15s).
               </div>
             )}
-            {d.status !== "submitted" && d.status !== "draft" && (
-              <button
-                onClick={() => onSubmit(d.draftId)}
-                className="mt-2 rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-              >
-                Confirm &amp; send now
-              </button>
+
+            {d.status !== "submitted" && d.status !== "cancelled" && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                {d.status !== "draft" && (
+                  <button
+                    onClick={() => onSubmit(d.draftId)}
+                    className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground hover:bg-primary/90"
+                  >
+                    Confirm &amp; send now
+                  </button>
+                )}
+                <button
+                  onClick={() => onPriorityChange(d.draftId, +1)}
+                  title="Raise priority in auto-resend queue"
+                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                >
+                  ▲ prioritize
+                </button>
+                <button
+                  onClick={() => onPriorityChange(d.draftId, -1)}
+                  title="Lower priority"
+                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                >
+                  ▼
+                </button>
+                <button
+                  onClick={() => onCancel(d.draftId)}
+                  className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                >
+                  ✕ cancel
+                </button>
+              </div>
             )}
           </li>
         ))}
@@ -882,26 +1054,95 @@ function TemplatePicker({
   onChange,
   disabled,
   onAddNew,
+  sessionId,
+  onImportJson,
+  onImportCsv,
+  onRollback,
 }: {
   templates: TemplateMeta[];
   value: string;
   onChange: (id: string) => void;
   disabled: boolean;
   onAddNew: () => void;
+  sessionId: string;
+  onImportJson: (file: File) => void;
+  onImportCsv: (file: File) => void;
+  onRollback: (templateId: string, toVersion: number) => void;
 }) {
+  const jsonRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState<string | null>(null);
+  const [history, setHistory] = useState<
+    { version: number; name: string; ministry: string; scheme: string; fields: unknown[]; savedAt: number; note?: string }[]
+  >([]);
+  const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+
+  const loadHistory = useCallback(
+    async (id: string) => {
+      const r = await fetch(`/api/templates?sessionId=${sessionId}&templateId=${id}`);
+      const d = (await r.json()) as { history?: typeof history; version?: number };
+      setHistory(d.history ?? []);
+      setCurrentVersion(d.version ?? null);
+      setShowHistory(id);
+    },
+    [sessionId],
+  );
+
+  const customCount = templates.filter((t) => t.custom).length;
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-1">
         <div className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           📋 Form template
         </div>
-        <button
-          type="button"
-          onClick={onAddNew}
-          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
-        >
-          + new
-        </button>
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            onClick={onAddNew}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            + new
+          </button>
+          <button
+            type="button"
+            onClick={() => jsonRef.current?.click()}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            title="Bulk-import templates as JSON array"
+          >
+            ⬆ JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => csvRef.current?.click()}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+            title="Bulk-import templates as CSV (one row per field)"
+          >
+            ⬆ CSV
+          </button>
+          <input
+            ref={jsonRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportJson(f);
+              if (jsonRef.current) jsonRef.current.value = "";
+            }}
+          />
+          <input
+            ref={csvRef}
+            type="file"
+            accept="text/csv,.csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImportCsv(f);
+              if (csvRef.current) csvRef.current.value = "";
+            }}
+          />
+        </div>
       </div>
       <select
         value={value}
@@ -917,18 +1158,104 @@ function TemplatePicker({
             </option>
           ))}
         </optgroup>
-        {templates.some((t) => t.custom) && (
+        {customCount > 0 && (
           <optgroup label="Your templates">
             {templates.filter((t) => t.custom).map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name} ({t.fieldCount} fields)
+                {t.name} v{t.version ?? 1} ({t.fieldCount} fields)
               </option>
             ))}
           </optgroup>
         )}
       </select>
+
+      {customCount > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          <a
+            href={`/api/templates?sessionId=${sessionId}&mode=export-json`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Export JSON
+          </a>
+          <a
+            href={`/api/templates?sessionId=${sessionId}&mode=export-csv`}
+            className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-muted"
+          >
+            ⬇ Export CSV
+          </a>
+        </div>
+      )}
+
+      {customCount > 0 && (
+        <div className="mt-3 border-t border-border pt-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Version history
+          </div>
+          <ul className="space-y-1 text-xs">
+            {templates
+              .filter((t) => t.custom)
+              .map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    <span className="font-mono">{t.id}</span> · v{t.version ?? 1}
+                    {t.historyCount ? ` · ${t.historyCount} older` : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => loadHistory(t.id)}
+                    disabled={!(t.historyCount && t.historyCount > 0)}
+                    className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-40"
+                  >
+                    history
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="mt-3 rounded-md border border-primary/40 bg-muted/30 p-2 text-xs">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-semibold">
+              {showHistory} — versions (current v{currentVersion})
+            </span>
+            <button onClick={() => setShowHistory(null)} className="text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
+          </div>
+          {history.length === 0 ? (
+            <div className="text-muted-foreground">No prior versions yet.</div>
+          ) : (
+            <ul className="space-y-1">
+              {history
+                .slice()
+                .sort((a, b) => b.version - a.version)
+                .map((h) => (
+                  <li key={h.version} className="flex items-center justify-between gap-2 rounded border border-border bg-background/50 p-1.5">
+                    <span>
+                      <span className="font-semibold">v{h.version}</span> · {h.fields.length} fields ·{" "}
+                      <span className="text-muted-foreground">{new Date(h.savedAt).toLocaleString()}</span>
+                      {h.note && <span className="ml-1 italic text-muted-foreground">({h.note})</span>}
+                    </span>
+                    <button
+                      onClick={() => {
+                        onRollback(showHistory, h.version);
+                        setShowHistory(null);
+                      }}
+                      className="rounded bg-primary px-2 py-0.5 text-[11px] text-primary-foreground hover:bg-primary/90"
+                    >
+                      ↺ rollback
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="mt-2 text-[11px] text-muted-foreground">
-        The agent auto-maps your extracted docs into the chosen layout before asking you to validate.
+        The agent auto-maps your extracted docs into the chosen layout. Re-registering a template archives the prior version for rollback.
       </div>
     </div>
   );
