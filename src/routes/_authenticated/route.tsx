@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, redirect, Link, useRouter, useRouterState } fr
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, FileText, Shield, User, LogOut, Home, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -28,8 +28,10 @@ function AuthedLayout() {
 
   const nav = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/grievances", label: "My Grievances", icon: MessageSquare },
     { to: "/app", label: "Voice Agent", icon: Home },
+    { to: "/household", label: "My Family", icon: Users },
+    { to: "/grievances", label: "Grievances", icon: MessageSquare },
+    { to: "/impact", label: "Impact", icon: Map },
     { to: "/profile", label: "Profile", icon: User },
     ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
   ];

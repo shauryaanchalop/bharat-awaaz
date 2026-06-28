@@ -9,12 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as KioskRouteImport } from './routes/kiosk'
+import { Route as ImpactRouteImport } from './routes/impact'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedHouseholdRouteImport } from './routes/_authenticated/household'
 import { Route as AuthenticatedGrievancesRouteImport } from './routes/_authenticated/grievances'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
@@ -26,6 +29,16 @@ import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
 import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
 import { Route as ApiAgentResumeRouteImport } from './routes/api/agent.resume'
 
+const KioskRoute = KioskRouteImport.update({
+  id: '/kiosk',
+  path: '/kiosk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpactRoute = ImpactRouteImport.update({
+  id: '/impact',
+  path: '/impact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -53,6 +66,11 @@ const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHouseholdRoute = AuthenticatedHouseholdRouteImport.update({
+  id: '/household',
+  path: '/household',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedGrievancesRoute = AuthenticatedGrievancesRouteImport.update({
@@ -110,9 +128,12 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
+  '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -127,9 +148,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
+  '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -146,9 +170,12 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/grievances': typeof AuthenticatedGrievancesRoute
+  '/_authenticated/household': typeof AuthenticatedHouseholdRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -165,9 +192,12 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/admin'
     | '/dashboard'
     | '/grievances'
+    | '/household'
     | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -182,9 +212,12 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/admin'
     | '/dashboard'
     | '/grievances'
+    | '/household'
     | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -200,9 +233,12 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/grievances'
+    | '/_authenticated/household'
     | '/_authenticated/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -219,6 +255,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AppRoute: typeof AppRoute
   AuthRoute: typeof AuthRoute
+  ImpactRoute: typeof ImpactRoute
+  KioskRoute: typeof KioskRoute
   ApiTemplatesRoute: typeof ApiTemplatesRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
@@ -231,6 +269,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/kiosk': {
+      id: '/kiosk'
+      path: '/kiosk'
+      fullPath: '/kiosk'
+      preLoaderRoute: typeof KioskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impact': {
+      id: '/impact'
+      path: '/impact'
+      fullPath: '/impact'
+      preLoaderRoute: typeof ImpactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -271,6 +323,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/household': {
+      id: '/_authenticated/household'
+      path: '/household'
+      fullPath: '/household'
+      preLoaderRoute: typeof AuthenticatedHouseholdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/grievances': {
@@ -350,6 +409,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGrievancesRoute: typeof AuthenticatedGrievancesRoute
+  AuthenticatedHouseholdRoute: typeof AuthenticatedHouseholdRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
 }
 
@@ -357,6 +417,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGrievancesRoute: AuthenticatedGrievancesRoute,
+  AuthenticatedHouseholdRoute: AuthenticatedHouseholdRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
 }
 
@@ -368,6 +429,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AppRoute: AppRoute,
   AuthRoute: AuthRoute,
+  ImpactRoute: ImpactRoute,
+  KioskRoute: KioskRoute,
   ApiTemplatesRoute: ApiTemplatesRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,
@@ -380,13 +443,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
