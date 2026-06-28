@@ -87,9 +87,10 @@ export async function runAsrTranslate(audioBase64: string, sourceLang: string) {
         config: {
           language: { sourceLanguage: sourceLang },
           serviceId: pipeline.serviceIds.asr,
-          audioFormat: "webm",
+          audioFormat: "wav",
           samplingRate: 16000,
         },
+
       },
       {
         taskType: "translation",
