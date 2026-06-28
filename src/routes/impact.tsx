@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, Users, IndianRupee, MapPin, ArrowRight } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getImpactStats } from "@/lib/impact.functions";
 
 export const Route = createFileRoute("/impact")({
   head: () => ({
@@ -47,8 +47,12 @@ function Impact() {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.rpc("get_impact_stats");
-      if (!error && data) setStats(data as StateStat[]);
+      try {
+        const data = await getImpactStats();
+        setStats(data as StateStat[]);
+      } catch {
+        // ignore — UI falls back to demo baselines
+      }
       setLoading(false);
     })();
   }, []);
