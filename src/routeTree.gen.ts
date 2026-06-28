@@ -17,6 +17,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AuthenticatedHouseholdRouteImport } from './routes/_authenticated/household'
 import { Route as AuthenticatedGrievancesRouteImport } from './routes/_authenticated/grievances'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
@@ -65,6 +66,11 @@ const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedHouseholdRoute = AuthenticatedHouseholdRouteImport.update({
+  id: '/household',
+  path: '/household',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedGrievancesRoute = AuthenticatedGrievancesRouteImport.update({
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
+  '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
+  '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/grievances': typeof AuthenticatedGrievancesRoute
+  '/_authenticated/household': typeof AuthenticatedHouseholdRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/grievances'
+    | '/household'
     | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/grievances'
+    | '/household'
     | '/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/grievances'
+    | '/_authenticated/household'
     | '/_authenticated/profile'
     | '/api/templates'
     | '/api/agent/resume'
@@ -313,6 +325,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/household': {
+      id: '/_authenticated/household'
+      path: '/household'
+      fullPath: '/household'
+      preLoaderRoute: typeof AuthenticatedHouseholdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/grievances': {
       id: '/_authenticated/grievances'
       path: '/grievances'
@@ -390,6 +409,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGrievancesRoute: typeof AuthenticatedGrievancesRoute
+  AuthenticatedHouseholdRoute: typeof AuthenticatedHouseholdRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
 }
 
@@ -397,6 +417,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGrievancesRoute: AuthenticatedGrievancesRoute,
+  AuthenticatedHouseholdRoute: AuthenticatedHouseholdRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
 }
 
