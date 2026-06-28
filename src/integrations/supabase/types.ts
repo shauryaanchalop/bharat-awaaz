@@ -264,6 +264,16 @@ export type Database = {
       }
     }
     Functions: {
+      get_impact_stats: {
+        Args: never
+        Returns: {
+          failed: number
+          filings: number
+          scheme: string
+          state: string
+          submitted: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
