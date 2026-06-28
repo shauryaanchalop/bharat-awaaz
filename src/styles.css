@@ -109,9 +109,36 @@
   --ring: oklch(0.72 0.19 45);
 }
 
+/* LIGHT THEME — toggleable via `html.light` */
+html.light {
+  --background: oklch(0.99 0.003 240);
+  --foreground: oklch(0.18 0.01 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 240);
+  --primary: oklch(0.66 0.2 45);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.005 240);
+  --secondary-foreground: oklch(0.2 0.01 240);
+  --muted: oklch(0.96 0.004 240);
+  --muted-foreground: oklch(0.45 0.01 240);
+  --accent: oklch(0.5 0.17 145);
+  --accent-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.58 0.24 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.55 0.17 145);
+  --success-foreground: oklch(0.99 0 0);
+  --border: oklch(0.2 0.01 240 / 12%);
+  --input: oklch(0.2 0.01 240 / 14%);
+  --ring: oklch(0.66 0.2 45);
+  color-scheme: light;
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   html { color-scheme: dark; }
+  html.light { color-scheme: light; }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
@@ -123,8 +150,14 @@
       radial-gradient(ellipse 60% 50% at 90% 110%, oklch(0.55 0.18 145 / 0.12), transparent 70%);
     background-attachment: fixed;
   }
+  html.light body {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, oklch(0.72 0.19 45 / 0.12), transparent 70%),
+      radial-gradient(ellipse 60% 50% at 90% 110%, oklch(0.55 0.18 145 / 0.08), transparent 70%);
+  }
   h1, h2, h3, h4 { font-family: var(--font-display); letter-spacing: -0.02em; font-weight: 600; }
 }
+
 
 @layer components {
   .text-balance { text-wrap: balance; }
