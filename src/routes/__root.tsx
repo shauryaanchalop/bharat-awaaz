@@ -11,6 +11,10 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { FloatingThemeToggle } from "../components/ThemeToggle";
+
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('ba-theme');if(t==='light'){document.documentElement.classList.add('light');}}catch(e){}})();`;
+
 
 function NotFoundComponent() {
   return (
