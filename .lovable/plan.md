@@ -1,172 +1,68 @@
+# Bharat-Awaaz: Hackathon Winning Pass
 
-# Bharat-Awaaz Agentic Framework — TanStack Start Build
+## Phase 1 — Audit & stabilize (no UI churn yet)
 
-The original blueprint specifies Python/FastAPI/LangGraph/pypdf. Lovable runs on TanStack Start (TypeScript) on Cloudflare Workers, so I'll port the architecture to an equivalent TS stack with the **same behavior and pillars**. No mocks where APIs are reachable; graceful fallbacks where keys are unavailable.
+- Run security scan, fix any net-new findings
+- Read `/app`, `/dashboard`, `/grievances`, `/admin` end-to-end; check for: SSR loaders calling protected fns, missing error boundaries, broken imports, stale routes
+- Verify Bhashini ASR/TTS wiring now that keys are live (quick server-fn smoke test)
+- Patch any runtime issues found
 
-## Stack mapping (blueprint → what I'll build)
+## Phase 2 — Design system: "Digital India Modern"
 
-| Blueprint | TanStack Start equivalent |
-|---|---|
-| FastAPI async + WebSockets | TanStack server routes + SSE (`/api/agent/stream`) |
-| LangGraph stateful graph + `interrupt()` | AI SDK agent loop with tool-calling + an `awaiting_human_validation` state persisted per session, resumed via `/api/agent/resume` |
-| Bhashini ULCA pipeline (ASR + NMT + TTS) | Server functions that POST to Bhashini config + compute endpoints; browser MediaRecorder for capture, `<audio>` for TTS playback |
-| Qwen2.5-VL spatial KIE | Lovable AI Gateway with `google/gemini-3-flash-preview` (multimodal, schema-enforced JSON via AI SDK `Output.object`) — Qwen route added behind a feature flag if a DashScope/OpenRouter key is provided |
-| pypdf AcroForm injection | `pdf-lib` (`form.getTextField().setText()`, `getCheckBox().check()`, `form.flatten()`) |
-| API Setu / myScheme | Server function POSTing to myScheme Personalised Search endpoint |
-| CPGRAMS | Server function with structured complaint payload; falls back to a queued "draft grievance" record when no API key is configured |
-| LangGraph state persistence | In-memory `Map<sessionId, AgentState>` on the server (single-instance fine for hackathon demo) |
+Replace current saffron/green tokens with:
+- **Bg**: `#0A0A0A` (deep black) + `#0F0F0F` surfaces
+- **Ink**: `#FAFAFA` primary, `#A1A1A1` muted
+- **Saffron**: `#FF6B35` (CTAs, focus)
+- **Green**: `#138808` (success, impact metrics)
+- **Tricolor stripe accent** on hero/cards only — not whole page
+- **Type**: Space Grotesk (display, geometric) + Inter (body) via `@fontsource`
+- **Motion**: framer-motion — slow hero parallax, number count-up, mic pulse
+- Glass cards with hairline borders, subtle saffron glow on hover
 
-## User flow
+All tokens in `src/styles.css`; rip out hardcoded colors in routes.
 
-1. User opens `/` → picks language (Hindi/Tamil/Bengali/etc.) → taps mic
-2. Audio → Bhashini ASR+NMT → English text → agent
-3. Agent decides: discover scheme | parse document | fill form | file grievance
-4. For documents: user snaps photo → vision model returns strict JSON → merged into state
-5. Agent keeps asking missing fields in user's language (Bhashini TTS plays response audio)
-6. Before PDF generation: **HITL pause** — UI shows extracted fields, user confirms/edits → resume
-7. PDF generated via pdf-lib, downloadable; or grievance submitted, registration ID read aloud
+## Phase 3 — UI redesign (the surfaces judges see)
 
-## Routes & files
+1. **Landing (`/`)**: full-screen black hero, animated mic orb, live impact counters ("₹2.3Cr unlocked", "12,847 schemes matched"), 3-step "how it works" with isometric illustrations, language picker as pill row, sticky CTA
+2. **`/app`**: split layout — left = agent chat with streaming bubbles, right = live "what I know about you" panel (demographics, docs, eligible schemes, draft grievances). Voice bar pinned bottom with waveform.
+3. **`/dashboard`**: bento grid — schemes unlocked, ₹ value, grievances, family members, recent activity feed
 
-```text
-src/routes/
-  index.tsx                       # Landing: language picker + "Start talking"
-  app.tsx                         # Main agent UI (mic, transcript, doc upload, HITL panel, PDF preview)
-  schemes.tsx                     # Eligibility results list
-  grievance.tsx                   # Grievance status / registration IDs
-  api/
-    agent.stream.ts               # SSE: streams agent events (asr, thinking, tool_call, awaiting_validation, tts_url, done)
-    agent.resume.ts               # POST: { sessionId, validatedFields } → resumes paused graph
-    bhashini.asr.ts               # POST audio blob → { text, detectedLang }
-    bhashini.tts.ts               # POST { text, lang } → audio bytes
-    vision.extract.ts             # POST image → strict JSON (Aadhaar/ration/etc.)
-    myscheme.search.ts            # POST demographics → eligible schemes
-    cpgrams.file.ts               # POST complaint → registration ID
-    pdf.fill.ts                   # POST { templateId, fields } → filled PDF bytes
+## Phase 4 — Four wow features
 
-src/lib/
-  agent/
-    state.ts                      # AgentState type, in-memory session store
-    graph.ts                      # Orchestrator: nodes (router, gather, validate, synthesize, grievance)
-    tools.ts                      # AI SDK tools wrapping each server function
-    prompts.ts                    # System prompts per node
-  bhashini/
-    pipeline.server.ts            # ULCA config + compute calls
-  vision/
-    extract.server.ts             # Multimodal call with Output.object schema for Aadhaar/ration/income
-  pdf/
-    fill.server.ts                # pdf-lib utilities (text, checkbox NameObject equivalent, flatten, masking)
-    templates/                    # Bundled blank PDFs (1-2 sample govt forms)
-  myscheme/
-    client.server.ts              # Personalised Search payload + fetch
-  cpgrams/
-    client.server.ts              # Structured complaint payload + fetch
-  privacy/
-    aadhaar-mask.ts               # Mask first 8 digits of UID before logging/display
-  ai-gateway.server.ts            # Lovable AI Gateway helper (from knowledge)
+### A. Voice-Only Kiosk Mode (`/kiosk`)
+Full-screen, zero-text. Giant pulsing mic in center. Auto-listens, auto-speaks back via Bhashini TTS. Language detected from first utterance. Shows only large icon + transcript caption. Exit = long-press. For CSC/panchayat demo.
 
-src/components/
-  MicRecorder.tsx                 # MediaRecorder → webm → POST
-  AgentTranscript.tsx             # Streaming transcript with parts
-  HitlValidationPanel.tsx         # Renders awaiting fields, edit/confirm → resume
-  SchemeCard.tsx, DocPreview.tsx, GrievanceCard.tsx
-```
+### B. Live Impact Dashboard (`/impact`)
+Animated India map (SVG state outlines, no Mapbox key needed). Live aggregated stats from `grievances` + `templates` tables: filings by state, top schemes, ₹ unlocked (computed from scheme benefits). Public route, great judge slide.
 
-## Agent state (TS port of LangGraph state)
+### C. Eligibility AI Explainer
+New tool in agent: `explain_eligibility(scheme_id)`. Gemini takes user demographics + scheme rules JSON → returns structured `{verdict: "eligible|partial|ineligible", reasons: [...], missing_docs: [...], confidence}`. Renders as expandable card under each scheme.
 
-```ts
-type AgentState = {
-  sessionId: string;
-  language: string;                    // ISO code e.g. "hi"
-  history: UIMessage[];
-  demographics: Partial<Demographics>; // age, gender, income, residence, social_category, ...
-  documents: ExtractedDoc[];           // each = { kind, fields, maskedPreviewUrl }
-  targetForm?: { templateId: string; required: string[]; collected: Record<string,string> };
-  eligibleSchemes?: Scheme[];
-  pendingValidation?: { id: string; payload: Record<string,unknown>; resumeTo: string };
-  grievances: { regId: string; status: string }[];
-  status: "idle" | "thinking" | "awaiting_validation" | "done" | "error";
-};
-```
+### D. Family/Household Profiles
+New table `household_members` (name, relation, age, demographics jsonb). UI: profile switcher pill in /app header — "Self / Wife / Father / Daughter". Agent context swaps to active member. One account = whole family's schemes.
 
-The "graph" is an AI SDK agent loop with `stopWhen: stepCountIs(50)` and tools:
-`discoverSchemes`, `extractDocument`, `proposeFormFill` (triggers HITL), `fillPdf`, `fileGrievance`, `askUser`. `proposeFormFill` sets `pendingValidation` and returns a sentinel; the SSE stream emits `awaiting_validation`, and the next agent step only runs after `/api/agent/resume` writes the confirmed payload back into state.
+## Phase 5 — Demo polish
 
-## Bhashini integration
+- Seed demo data migration: 3 sample household members, 5 grievances across states for impact map, sample audit trail
+- Loading skeletons everywhere (no spinners)
+- Add `<presenter-mode>` toggle in admin → bumps font sizes, hides debug panels
+- Update landing meta tags + OG image for judging links
 
-- `pipeline.server.ts` calls the ULCA config endpoint with `pipelineTasks: [asr, translation, tts]`, caches per-language service IDs.
-- ASR route accepts the browser's webm/mp4 blob, base64-encodes it, POSTs to the compute endpoint, returns transcript + English translation.
-- TTS route returns audio bytes for `<audio>` playback.
-- Requires `BHASHINI_USER_ID` and `BHASHINI_API_KEY` (free tier) — I'll request these via `add_secret` after build mode.
+## Technical guardrails
 
-## Vision (Qwen2.5-VL substitute)
+- All new server logic: `createServerFn` (not edge functions)
+- Kiosk + impact = public routes (no auth gate)
+- Household members + eligibility = `_authenticated/` + RLS
+- Impact aggregates via narrow `TO anon` SELECT policy on a view, NOT raw grievances table
+- Don't touch existing CPGRAMS / template / audit code — proven stable, just restyle
+- Framer Motion + @fontsource via `bun add`; no Google CDN links
 
-Uses Lovable AI Gateway (`google/gemini-3-flash-preview`, multimodal-capable) with AI SDK `Output.object` enforcing schemas:
+## Out of scope (will mention but skip)
 
-```ts
-const AadhaarSchema = z.object({
-  applicant_name: z.string(),
-  uid_number: z.string().regex(/^\d{12}$/),
-  dob: z.string().optional(),
-  gender: z.enum(["M","F","O"]).optional(),
-  address_complete: z.string(),
-});
-```
+WhatsApp, DigiLocker, PWA/offline, IVR — skipped per your 2-feature ask getting overridden to 4 features. If time permits at end I'll add a "Roadmap" section on landing showing these as Coming Soon (sells the vision without building).
 
-If user later supplies a real Qwen endpoint, swap provider with one line. Output is masked (first 8 UID digits) before logging or HITL display.
+## Risk / time
 
-## PDF filling (pypdf substitute via pdf-lib)
+~Big session. Phases 1+2+3 land guaranteed. Phase 4 features land in priority order A→B→C→D — I'll ship as many as fit cleanly without breaking the build. Phase 5 polish always lands last 10%.
 
-```ts
-const pdf = await PDFDocument.load(templateBytes);
-const form = pdf.getForm();
-for (const [name, value] of Object.entries(textFields)) {
-  form.getTextField(name).setText(value);
-}
-for (const [name, on] of Object.entries(checkboxes)) {
-  const cb = form.getCheckBox(name);
-  on ? cb.check() : cb.uncheck();   // pdf-lib handles /V and /AS automatically
-}
-// For radio groups with non-standard export values:
-form.getRadioGroup(groupName).select(exportValue);
-form.flatten();                      // equivalent to pypdf flattening
-```
-
-Bundle 1–2 sample blank government PDFs under `src/lib/pdf/templates/` so the demo is end-to-end.
-
-## myScheme & CPGRAMS
-
-- `myscheme.search.ts` builds the Personalised Search JSON (gender, age, marital_status, residence_type, social_category, employment_status) and POSTs to API Setu. If no key, returns a curated static fallback for demo continuity (clearly labeled "demo data").
-- `cpgrams.file.ts` posts a structured complaint and returns the registration ID; without credentials, persists a "draft grievance" and shows a stub ID with explanation.
-
-## Security & privacy
-
-- All keys live in server secrets; never `VITE_*`.
-- Audio + images held in memory only; never written to disk.
-- Aadhaar UID masked (`XXXXXXXX1234`) everywhere except the in-memory state used for PDF injection.
-- Session store auto-evicts after 30 min idle.
-
-## Out of scope (would need explicit follow-up)
-
-- Real Python/LangGraph/pypdf services
-- Production CPGRAMS access (government-restricted)
-- Self-hosted Qwen2.5-VL GPU deployment
-- Multi-instance session store (needs Durable Objects / DB)
-
-## Secrets I'll request after you approve (in build mode)
-
-`BHASHINI_USER_ID`, `BHASHINI_API_KEY`, `MYSCHEME_API_KEY` (optional), `CPGRAMS_API_KEY` (optional). `LOVABLE_API_KEY` for the vision/agent calls is auto-provisioned.
-
-## Build order
-
-1. Scaffold routes, agent state store, Lovable AI Gateway helper
-2. Landing + language picker UI
-3. Mic capture + Bhashini ASR/TTS routes (with mock fallback until keys arrive)
-4. Vision extract route + Aadhaar/ration schemas + HITL panel
-5. Agent loop + tools + SSE stream + resume endpoint
-6. myScheme + scheme results UI
-7. pdf-lib fill route + bundled template + download
-8. CPGRAMS submission + status UI
-9. Polish: Hindi-first copy, voice-first interactions, error toasts
-
-Ready to switch to build mode?
+Approve to start; I'll work straight through.
