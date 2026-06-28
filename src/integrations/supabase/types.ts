@@ -112,6 +112,51 @@ export type Database = {
         }
         Relationships: []
       }
+      household_members: {
+        Row: {
+          age: number | null
+          created_at: string
+          demographics: Json | null
+          gender: string | null
+          id: string
+          is_primary: boolean | null
+          name: string
+          occupation: string | null
+          relation: string
+          state: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age?: number | null
+          created_at?: string
+          demographics?: Json | null
+          gender?: string | null
+          id?: string
+          is_primary?: boolean | null
+          name: string
+          occupation?: string | null
+          relation: string
+          state?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          age?: number | null
+          created_at?: string
+          demographics?: Json | null
+          gender?: string | null
+          id?: string
+          is_primary?: boolean | null
+          name?: string
+          occupation?: string | null
+          relation?: string
+          state?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -207,7 +252,16 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      impact_stats: {
+        Row: {
+          failed: number | null
+          filings: number | null
+          scheme: string | null
+          state: string | null
+          submitted: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
