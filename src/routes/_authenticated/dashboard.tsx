@@ -1,41 +1,38 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, CheckCircle2, Clock, AlertCircle, Mic, FilePlus } from "lucide-react";
+import { FileText, CheckCircle2, Clock, AlertCircle, Mic, FilePlus, Users, Map, Sparkles, ArrowUpRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Bharat-Awaaz" }] }),
   component: Dashboard,
 });
 
-type Grievance = {
-  id: string;
-  subject: string;
-  status: string;
-  registration_id: string | null;
-  ministry: string | null;
-  created_at: string;
-};
+type Grievance = { id: string; subject: string; status: string; registration_id: string | null; ministry: string | null; created_at: string };
 
 function Dashboard() {
   const { user } = useAuth();
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [templateCount, setTemplateCount] = useState(0);
+  const [memberCount, setMemberCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [g, t] = await Promise.all([
+      const [g, t, h] = await Promise.all([
         supabase.from("grievances").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("templates").select("id", { count: "exact", head: true }),
+        supabase.from("household_members").select("id", { count: "exact", head: true }),
       ]);
       setGrievances((g.data as Grievance[]) ?? []);
       setTemplateCount(t.count ?? 0);
+      setMemberCount(h.count ?? 0);
       setLoading(false);
     })();
   }, [user]);
@@ -48,38 +45,67 @@ function Dashboard() {
   };
 
   return (
-    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
-        <p className="text-muted-foreground">Your citizen-services overview at a glance.</p>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-8 p-6 md:p-8">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-widest text-primary">Citizen console</div>
+          <h1 className="mt-2 font-display text-4xl font-bold tracking-tight">Welcome back</h1>
+          <p className="mt-1 text-muted-foreground">{user?.email}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/app" search={{ lang: "hi" }}><Button className="rounded-full"><Mic className="mr-2 h-4 w-4" /> Voice agent</Button></Link>
+          <Link to="/impact"><Button variant="outline" className="rounded-full"><Map className="mr-2 h-4 w-4" /> Impact</Button></Link>
+        </div>
+      </motion.div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Grievances" value={stats.total} icon={FileText} tone="primary" />
-        <StatCard label="Submitted" value={stats.submitted} icon={CheckCircle2} tone="success" />
-        <StatCard label="Pending" value={stats.pending} icon={Clock} tone="warning" />
-        <StatCard label="Failed" value={stats.failed} icon={AlertCircle} tone="destructive" />
-      </div>
+      {/* bento grid */}
+      <div className="grid auto-rows-[minmax(140px,auto)] grid-cols-2 gap-4 md:grid-cols-4">
+        <StatTile className="" label="Grievances" value={stats.total} icon={FileText} tone="saffron" />
+        <StatTile label="Submitted" value={stats.submitted} icon={CheckCircle2} tone="green" />
+        <StatTile label="Pending" value={stats.pending} icon={Clock} tone="muted" />
+        <StatTile label="Failed" value={stats.failed} icon={AlertCircle} tone="destructive" />
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <Card className="p-6 md:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">Recent grievances</h2>
+        {/* big tile: family */}
+        <Link to="/household" className="group relative col-span-2 row-span-2 overflow-hidden rounded-2xl border border-border bg-card/60 p-6 backdrop-blur transition hover:border-primary/40">
+          <div className="absolute right-4 top-4 text-muted-foreground transition group-hover:text-primary"><ArrowUpRight className="h-5 w-5" /></div>
+          <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary"><Users className="h-6 w-6" /></div>
+          <div className="mt-5 font-display text-5xl font-bold tracking-tight">{memberCount}</div>
+          <div className="mt-1 text-sm text-muted-foreground">family members on your account</div>
+          <p className="mt-6 max-w-md text-sm leading-relaxed text-muted-foreground">Add your spouse, parents, and children — the agent matches schemes per person and files for whoever needs it.</p>
+          <div className="absolute bottom-6 right-6 text-xs uppercase tracking-widest text-primary opacity-0 transition group-hover:opacity-100">Manage household →</div>
+        </Link>
+
+        {/* templates */}
+        <Card className="col-span-2 p-6 backdrop-blur">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">Form library</div>
+          <div className="mt-2 font-display text-3xl font-bold">{templateCount}</div>
+          <div className="text-sm text-muted-foreground">government PDF templates ready to auto-fill</div>
+          <Link to="/grievances" className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"><FilePlus className="h-4 w-4" /> New grievance</Link>
+        </Card>
+
+        {/* recent grievances - wide */}
+        <Card className="col-span-2 row-span-2 p-6 backdrop-blur md:col-span-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-muted-foreground">Activity</div>
+              <div className="mt-1 font-display text-xl font-semibold">Recent grievances</div>
+            </div>
             <Link to="/grievances"><Button variant="ghost" size="sm">View all →</Button></Link>
           </div>
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : grievances.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted-foreground">
-              No grievances yet. Start a conversation with the voice agent.
+            <div className="py-10 text-center">
+              <Sparkles className="mx-auto h-8 w-8 text-muted-foreground/50" />
+              <div className="mt-2 text-sm text-muted-foreground">No grievances yet. Start a conversation with the voice agent.</div>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-border">
               {grievances.slice(0, 6).map((g) => (
-                <div key={g.id} className="py-3 flex items-center justify-between gap-4">
+                <div key={g.id} className="flex items-center justify-between gap-4 py-3">
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{g.subject}</div>
-                    <div className="text-xs text-muted-foreground truncate">{g.ministry ?? "—"}</div>
+                    <div className="truncate font-medium">{g.subject}</div>
+                    <div className="truncate text-xs text-muted-foreground">{g.ministry ?? "—"} · {new Date(g.created_at).toLocaleDateString()}</div>
                   </div>
                   <StatusBadge status={g.status} regId={g.registration_id} />
                 </div>
@@ -87,37 +113,27 @@ function Dashboard() {
             </div>
           )}
         </Card>
-
-        <Card className="p-6 space-y-4">
-          <h2 className="font-semibold">Quick actions</h2>
-          <Link to="/app" className="block"><Button className="w-full justify-start" variant="outline"><Mic className="w-4 h-4 mr-2" /> Start voice agent</Button></Link>
-          <Link to="/grievances" className="block"><Button className="w-full justify-start" variant="outline"><FilePlus className="w-4 h-4 mr-2" /> New grievance</Button></Link>
-          <div className="pt-4 border-t">
-            <div className="text-2xl font-bold">{templateCount}</div>
-            <div className="text-xs text-muted-foreground">form templates available</div>
-          </div>
-        </Card>
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value, icon: Icon, tone }: { label: string; value: number; icon: React.ElementType; tone: "primary" | "success" | "warning" | "destructive" }) {
+function StatTile({ label, value, icon: Icon, tone, className = "" }: { label: string; value: number; icon: React.ElementType; tone: "saffron" | "green" | "muted" | "destructive"; className?: string }) {
   const tones = {
-    primary: "bg-primary/10 text-primary",
-    success: "bg-emerald-500/10 text-emerald-600",
-    warning: "bg-amber-500/10 text-amber-600",
-    destructive: "bg-destructive/10 text-destructive",
+    saffron: "text-[var(--saffron)] bg-[var(--saffron)]/15",
+    green: "text-[var(--india-green)] bg-[var(--india-green)]/15",
+    muted: "text-muted-foreground bg-muted",
+    destructive: "text-destructive bg-destructive/15",
   };
   return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
+    <Card className={`p-5 backdrop-blur ${className}`}>
+      <div className="flex items-start justify-between">
         <div>
-          <div className="text-sm text-muted-foreground">{label}</div>
-          <div className="text-3xl font-bold mt-1">{value}</div>
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">{label}</div>
+          <div className="mt-2 font-display text-4xl font-bold tabular-nums">{value}</div>
         </div>
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${tones[tone]}`}>
-          <Icon className="w-5 h-5" />
+        <div className={`grid h-10 w-10 place-items-center rounded-lg ${tones[tone]}`}>
+          <Icon className="h-5 w-5" />
         </div>
       </div>
     </Card>
