@@ -1841,8 +1841,7 @@ function Composer({
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const recorderRef = useRef<{ stop: () => Promise<Blob>; cancel: () => void } | null>(null);
 
   const startMock = useCallback(() => {
     const utterance = window.prompt(
@@ -1853,53 +1852,60 @@ function Composer({
 
   const startReal = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      chunksRef.current = [];
-      mr.ondataavailable = (e) => chunksRef.current.push(e.data);
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        if (blob.size < 1024) return;
-        setTranscribing(true);
-        try {
-          const ab = await blob.arrayBuffer();
-          const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-          const res = await fetch("/api/bhashini/asr", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ audioBase64: b64, lang }),
-          });
-          const data = (await res.json()) as {
-            ok: boolean;
-            transcript: string;
-            translatedEnglish: string;
-            error?: string;
-          };
-          if (data.ok && (data.translatedEnglish || data.transcript)) {
-            onSend(data.translatedEnglish || data.transcript);
-          } else {
-            const fallback = window.prompt(
-              data.error ? `Voice unavailable: ${data.error}\nType your message:` : "Type your message:",
-            );
-            if (fallback) onSend(fallback);
-          }
-        } finally {
-          setTranscribing(false);
-        }
-      };
-      mr.start();
-      recorderRef.current = mr;
+      const { startWavRecording } = await import("@/lib/audio/wav");
+      const rec = await startWavRecording();
+      recorderRef.current = rec;
       setRecording(true);
-    } catch {
-      alert("Microphone access denied or unavailable.");
+    } catch (err) {
+      console.error(err);
+      alert("Microphone access denied or unavailable. Please allow mic permissions.");
+    }
+  }, []);
+
+  const stop = useCallback(async () => {
+    const rec = recorderRef.current;
+    recorderRef.current = null;
+    setRecording(false);
+    if (!rec) return;
+    setTranscribing(true);
+    try {
+      const blob = await rec.stop();
+      if (blob.size < 2048) {
+        alert("That recording was too short. Please try again.");
+        return;
+      }
+      const { bytesToBase64 } = await import("@/lib/audio/wav");
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const b64 = bytesToBase64(bytes);
+      const res = await fetch("/api/bhashini/asr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audioBase64: b64, lang }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        transcript: string;
+        translatedEnglish: string;
+        source?: string;
+        error?: string;
+      };
+      if (data.ok && (data.translatedEnglish || data.transcript)) {
+        onSend(data.translatedEnglish || data.transcript);
+      } else {
+        const fallback = window.prompt(
+          data.error ? `${data.error}\nType your message:` : "Type your message:",
+        );
+        if (fallback && fallback.trim()) onSend(fallback.trim());
+      }
+    } catch (err) {
+      console.error("[mic] transcription failed", err);
+      const fallback = window.prompt("Transcription failed. Type your message:");
+      if (fallback && fallback.trim()) onSend(fallback.trim());
+    } finally {
+      setTranscribing(false);
     }
   }, [lang, onSend]);
 
-  const stop = useCallback(() => {
-    recorderRef.current?.stop();
-    setRecording(false);
-  }, []);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
