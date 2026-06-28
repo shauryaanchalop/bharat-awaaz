@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as KioskRouteImport } from './routes/kiosk'
+import { Route as ImpactRouteImport } from './routes/impact'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -26,6 +28,16 @@ import { Route as ApiAgentTurnRouteImport } from './routes/api/agent.turn'
 import { Route as ApiAgentStreamRouteImport } from './routes/api/agent.stream'
 import { Route as ApiAgentResumeRouteImport } from './routes/api/agent.resume'
 
+const KioskRoute = KioskRouteImport.update({
+  id: '/kiosk',
+  path: '/kiosk',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpactRoute = ImpactRouteImport.update({
+  id: '/impact',
+  path: '/impact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -110,6 +122,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
@@ -127,6 +141,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/grievances': typeof AuthenticatedGrievancesRoute
@@ -146,6 +162,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/app': typeof AppRoute
   '/auth': typeof AuthRoute
+  '/impact': typeof ImpactRoute
+  '/kiosk': typeof KioskRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/grievances': typeof AuthenticatedGrievancesRoute
@@ -165,6 +183,8 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/admin'
     | '/dashboard'
     | '/grievances'
@@ -182,6 +202,8 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/admin'
     | '/dashboard'
     | '/grievances'
@@ -200,6 +222,8 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/app'
     | '/auth'
+    | '/impact'
+    | '/kiosk'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/grievances'
@@ -219,6 +243,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AppRoute: typeof AppRoute
   AuthRoute: typeof AuthRoute
+  ImpactRoute: typeof ImpactRoute
+  KioskRoute: typeof KioskRoute
   ApiTemplatesRoute: typeof ApiTemplatesRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
@@ -231,6 +257,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/kiosk': {
+      id: '/kiosk'
+      path: '/kiosk'
+      fullPath: '/kiosk'
+      preLoaderRoute: typeof KioskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impact': {
+      id: '/impact'
+      path: '/impact'
+      fullPath: '/impact'
+      preLoaderRoute: typeof ImpactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -368,6 +408,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AppRoute: AppRoute,
   AuthRoute: AuthRoute,
+  ImpactRoute: ImpactRoute,
+  KioskRoute: KioskRoute,
   ApiTemplatesRoute: ApiTemplatesRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,
