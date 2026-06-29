@@ -404,3 +404,48 @@ export function clearReview(id: string) {
     ),
   }));
 }
+
+const PIPELINE_LABEL: Record<PipelineStatus, string> = {
+  received: "Received",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+export function pipelineLabel(s: PipelineStatus | null | undefined): string {
+  return s ? PIPELINE_LABEL[s] : "—";
+}
+
+export function setPipelineStatus(id: string, next: PipelineStatus, note = "", reviewer = "Admin (demo)") {
+  assertCapability("review_grievance");
+  mutateDemo((s) => {
+    const g = s.grievances.find((x) => x.id === id);
+    if (!g) return s;
+    const prev = g.pipeline_status;
+    if (prev === next) return s;
+    const now = new Date().toISOString();
+    const updated: DemoGrievance = {
+      ...g,
+      pipeline_status: next,
+      pipeline_updated_at: now,
+      pipeline_updated_by: reviewer,
+    };
+    const detailBits = [
+      `${reviewer} moved ${prev ? PIPELINE_LABEL[prev] : "—"} → ${PIPELINE_LABEL[next]}`,
+    ];
+    if (note.trim()) detailBits.push(`"${note.trim()}"`);
+    const audit: DemoAudit = {
+      id: rid("a_"),
+      user_id: g.user_id,
+      grievance_id: g.id,
+      action: `pipeline_${next}`,
+      detail: detailBits.join(" — "),
+      created_at: now,
+    };
+    return {
+      ...s,
+      grievances: s.grievances.map((x) => (x.id === id ? updated : x)),
+      audit: [audit, ...s.audit],
+    };
+  });
+}
