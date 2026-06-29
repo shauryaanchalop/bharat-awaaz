@@ -2356,6 +2356,28 @@ function SttStatusPanel({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        {canRetry && (
+          <>
+            <button
+              type="button"
+              onClick={() => onRetry("auto")}
+              aria-label="Retry transcription with the last recording"
+              className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+              title="Re-run speech recognition on the last recording"
+            >
+              ↻ Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => onRetry(otherEngine)}
+              aria-label={`Retry transcription using ${otherLabel}`}
+              className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+              title={`Switch to ${otherLabel} and retry`}
+            >
+              Try {otherLabel}
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={onPttToggle}
@@ -2383,6 +2405,7 @@ function SttStatusPanel({
           Mic test
         </button>
       </div>
+
     </div>
   );
 }
