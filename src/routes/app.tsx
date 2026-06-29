@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
+import { MicTestDialog } from "@/components/MicTest";
 
 const searchSchema = z.object({ lang: z.string().optional() });
 
