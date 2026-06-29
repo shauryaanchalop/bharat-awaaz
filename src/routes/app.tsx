@@ -1882,6 +1882,65 @@ function Composer({
     }
   }, []);
 
+  // Shared call to the ASR endpoint. Used by both the initial stop() and Retry.
+  const transcribe = useCallback(
+    async (b64: string, useLang: string, prefer: "auto" | "bhashini" | "lovable-ai") => {
+      setTranscribing(true);
+      setStatus({
+        state: "transcribing",
+        message:
+          prefer === "bhashini"
+            ? "Retrying with Bhashini…"
+            : prefer === "lovable-ai"
+              ? "Retrying with Lovable AI fallback…"
+              : "Sending audio to speech engine…",
+      });
+      try {
+        const res = await fetch("/api/bhashini/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioBase64: b64, lang: useLang, prefer }),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          transcript: string;
+          translatedEnglish: string;
+          source?: string;
+          error?: string;
+        };
+        if (data.ok && (data.translatedEnglish || data.transcript)) {
+          setStatus({
+            state: "ok",
+            source: data.source,
+            message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
+          });
+          setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
+        } else {
+          setStatus({
+            state: "error",
+            source: data.source,
+            message:
+              data.error ||
+              "Speech recognition could not understand the audio. Try again, speak louder, or type instead.",
+          });
+        }
+      } catch (err) {
+        console.error("[mic] transcription failed", err);
+        setStatus({
+          state: "error",
+          message:
+            err instanceof Error
+              ? `Transcription failed: ${err.message}`
+              : "Transcription failed. Check your network and try again.",
+        });
+      } finally {
+        setTranscribing(false);
+        setPartial("");
+      }
+    },
+    [],
+  );
+
   const stop = useCallback(async () => {
     if (finishingRef.current) return;
     finishingRef.current = true;
@@ -1908,54 +1967,39 @@ function Composer({
           state: "error",
           message: "Recording was too short or silent. Hold the button longer and speak clearly.",
         });
+        setCanRetry(false);
+        lastAudioRef.current = null;
         return;
       }
       const { bytesToBase64 } = await import("@/lib/audio/wav");
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const b64 = bytesToBase64(bytes);
-      const res = await fetch("/api/bhashini/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audioBase64: b64, lang }),
-      });
-      const data = (await res.json()) as {
-        ok: boolean;
-        transcript: string;
-        translatedEnglish: string;
-        source?: string;
-        error?: string;
-      };
-      if (data.ok && (data.translatedEnglish || data.transcript)) {
-        setStatus({
-          state: "ok",
-          source: data.source,
-          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
-        });
-        setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
-      } else {
-        setStatus({
-          state: "error",
-          source: data.source,
-          message:
-            data.error ||
-            "Speech recognition could not understand the audio. Try again, speak louder, or type instead.",
-        });
-      }
+      lastAudioRef.current = { b64, lang };
+      setCanRetry(true);
+      await transcribe(b64, lang, "auto");
     } catch (err) {
-      console.error("[mic] transcription failed", err);
+      console.error("[mic] recording failed", err);
       setStatus({
         state: "error",
         message:
           err instanceof Error
-            ? `Transcription failed: ${err.message}`
-            : "Transcription failed. Check your network and try again.",
+            ? `Recording failed: ${err.message}`
+            : "Recording failed. Try again.",
       });
     } finally {
-      setTranscribing(false);
-      setPartial("");
       finishingRef.current = false;
     }
-  }, [lang]);
+  }, [lang, transcribe]);
+
+  const retryTranscription = useCallback(
+    async (prefer: "auto" | "bhashini" | "lovable-ai") => {
+      const cached = lastAudioRef.current;
+      if (!cached) return;
+      setPending(null);
+      await transcribe(cached.b64, cached.lang, prefer);
+    },
+    [transcribe],
+  );
 
   const startReal = useCallback(async () => {
     if (recording) return;
