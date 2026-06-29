@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
 import { MicTestDialog } from "@/components/MicTest";
+import { BackButton } from "@/components/BackButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const searchSchema = z.object({ lang: z.string().optional() });
 
