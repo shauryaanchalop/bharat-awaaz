@@ -2350,3 +2350,107 @@ function DocumentUpload({
     </div>
   );
 }
+
+function TranscriptConfirm({
+  initialText,
+  source,
+  onConfirm,
+  onDiscard,
+  onRetake,
+}: {
+  initialText: string;
+  source?: string;
+  onConfirm: (text: string) => void;
+  onDiscard: () => void;
+  onRetake: () => void;
+}) {
+  const [text, setText] = useState(initialText);
+  const [editing, setEditing] = useState(false);
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setText(initialText);
+    setEditing(false);
+  }, [initialText]);
+
+  useEffect(() => {
+    if (editing) ref.current?.focus();
+  }, [editing]);
+
+  const sourceLabel =
+    source === "bhashini"
+      ? "Bhashini"
+      : source === "lovable-ai"
+        ? "Lovable AI fallback"
+        : source === "mock"
+          ? "Mock voice"
+          : "Speech engine";
+
+  const empty = !text.trim();
+
+  return (
+    <div className="mt-2 rounded-xl border border-primary/40 bg-primary/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+        <div className="font-medium text-primary">
+          🔎 Review transcript before sending
+          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            via {sourceLabel}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          {editing ? "Done editing" : "✎ Edit"}
+        </button>
+      </div>
+      {editing ? (
+        <textarea
+          ref={ref}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !empty) {
+              e.preventDefault();
+              onConfirm(text.trim());
+            }
+          }}
+          rows={2}
+          className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+      ) : (
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          {text || <em className="text-muted-foreground">(empty)</em>}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-xs">
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="rounded-full border border-border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          onClick={onRetake}
+          className="rounded-full border border-border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+        >
+          🎙 Re-record
+        </button>
+        <button
+          type="button"
+          disabled={empty}
+          onClick={() => onConfirm(text.trim())}
+          className="rounded-full bg-primary px-4 py-1.5 font-medium text-primary-foreground disabled:opacity-50"
+        >
+          Send ⏎
+        </button>
+      </div>
+      <div className="mt-1 text-[10px] text-muted-foreground">
+        Tip: ⌘/Ctrl + Enter to send while editing.
+      </div>
+    </div>
+  );
+}
