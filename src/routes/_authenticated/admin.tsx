@@ -264,10 +264,10 @@ function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance 
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
 
   // reset state whenever a new target is opened
-  useMemo(() => {
+  useEffect(() => {
     setNotes(target?.review_notes ?? "");
     setDecision(target?.review_decision ?? null);
-  }, [target?.id]);
+  }, [target?.id, target?.review_notes, target?.review_decision]);
 
   const submit = (d: "approved" | "rejected") => {
     if (!target) return;
