@@ -18,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/household")({
 const RELATIONS = ["Self", "Spouse", "Father", "Mother", "Son", "Daughter", "Brother", "Sister", "Grandparent", "Other"];
 
 function HouseholdPage() {
+  useRoleGuard("user");
   const store = useDemoStore();
   const members = store.members.filter((m) => m.user_id === DEMO_USER_ID);
   const [form, setForm] = useState({ name: "", relation: "Spouse", age: "", gender: "", state: "", occupation: "" });
