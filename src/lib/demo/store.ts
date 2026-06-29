@@ -3,6 +3,7 @@
 // shows realistic information from the very first visit.
 
 import { useEffect, useState } from "react";
+import { assertCapability } from "@/lib/auth/hooks";
 
 const KEY = "bharat-awaaz.demo-store.v2";
 const EVENT = "demo-store-change";
@@ -231,6 +232,7 @@ export function mutateDemo(fn: (s: DemoStore) => DemoStore) {
 }
 
 export function resetDemo() {
+  assertCapability("reset_demo");
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
   window.dispatchEvent(new CustomEvent(EVENT));
@@ -238,6 +240,7 @@ export function resetDemo() {
 
 // --- mutators used by pages ---
 export function addMember(input: Omit<DemoMember, "id" | "created_at" | "user_id" | "is_primary"> & { is_primary?: boolean }) {
+  assertCapability("manage_household");
   mutateDemo((s) => ({
     ...s,
     members: [
@@ -254,10 +257,12 @@ export function addMember(input: Omit<DemoMember, "id" | "created_at" | "user_id
 }
 
 export function removeMember(id: string) {
+  assertCapability("manage_household");
   mutateDemo((s) => ({ ...s, members: s.members.filter((m) => m.id !== id) }));
 }
 
 export function addGrievance(input: { subject: string; ministry: string; description: string }) {
+  assertCapability("create_grievance");
   mutateDemo((s) => {
     const g: DemoGrievance = {
       id: rid("g_"),
@@ -285,6 +290,7 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
 }
 
 export function removeGrievance(id: string) {
+  assertCapability("edit_own_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.filter((g) => g.id !== id),
@@ -293,6 +299,7 @@ export function removeGrievance(id: string) {
 }
 
 export function bumpPriority(id: string, delta: number) {
+  assertCapability("edit_own_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.map((g) => (g.id === id ? { ...g, priority: g.priority + delta } : g)),
@@ -308,6 +315,7 @@ export function updateProfile(patch: Partial<Pick<DemoProfile, "display_name" | 
 }
 
 export function reviewGrievance(id: string, decision: ReviewDecision, notes: string, reviewer = "Admin (demo)") {
+  assertCapability("review_grievance");
   mutateDemo((s) => {
     const g = s.grievances.find((x) => x.id === id);
     if (!g) return s;
@@ -336,6 +344,7 @@ export function reviewGrievance(id: string, decision: ReviewDecision, notes: str
 }
 
 export function clearReview(id: string) {
+  assertCapability("review_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.map((g) =>

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useDemoStore, DEMO_USER_ID, addMember, removeMember } from "@/lib/demo/store";
+import { useRoleGuard } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/household")({
 const RELATIONS = ["Self", "Spouse", "Father", "Mother", "Son", "Daughter", "Brother", "Sister", "Grandparent", "Other"];
 
 function HouseholdPage() {
+  useRoleGuard("user");
   const store = useDemoStore();
   const members = store.members.filter((m) => m.user_id === DEMO_USER_ID);
   const [form, setForm] = useState({ name: "", relation: "Spouse", age: "", gender: "", state: "", occupation: "" });

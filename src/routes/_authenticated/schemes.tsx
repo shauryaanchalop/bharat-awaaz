@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DEMO_USER_ID, addGrievance, useDemoStore, type DemoGrievance } from "@/lib/demo/store";
+import { useCan, useRoleGuard } from "@/lib/auth/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +175,8 @@ function stepIndexFor(g: DemoGrievance | undefined): { idx: number; failed: bool
 }
 
 function SchemesPage() {
+  useRoleGuard(["user", "admin"]); // both can browse; mutations gated below
+  const canStart = useCan("start_application");
   const store = useDemoStore();
   const [query, setQuery] = useState("");
 
@@ -336,7 +339,12 @@ function SchemesPage() {
                         </Button>
                       </Link>
                     ) : (
-                      <Button size="sm" onClick={() => startApplication(s)}>
+                      <Button
+                        size="sm"
+                        onClick={() => startApplication(s)}
+                        disabled={!canStart}
+                        title={canStart ? undefined : "Switch to Citizen role to start an application"}
+                      >
                         Start application
                       </Button>
                     )}
