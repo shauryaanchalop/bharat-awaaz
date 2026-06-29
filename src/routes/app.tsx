@@ -2010,6 +2010,70 @@ function Composer({
     if (recording) stop();
   }, [mockVoice, recording, stop]);
 
+  // Cancel current recording without transcribing (Esc key).
+  const cancelRecording = useCallback(() => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    liveRef.current?.stop();
+    liveRef.current = null;
+    try {
+      rec.cancel();
+    } catch {
+      /* ignore */
+    }
+    setRecording(false);
+    setLevel(0);
+    setPartial("");
+    setStatus({ state: "idle", message: "Recording cancelled." });
+  }, []);
+
+  // Keyboard controls: Space/Enter to hold-to-talk (PTT), Esc to cancel.
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t.isContentEditable
+      );
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && recording) {
+        e.preventDefault();
+        cancelRecording();
+        return;
+      }
+      if (!pttMode || mockVoice) return;
+      if (e.repeat) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        pttDown();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!pttMode || mockVoice) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        pttUp();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [pttMode, mockVoice, recording, pttDown, pttUp, cancelRecording]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -2074,6 +2138,8 @@ function Composer({
             onPointerUp={pttMode ? pttUp : undefined}
             onPointerLeave={pttMode && recording ? pttUp : undefined}
             disabled={disabled || transcribing}
+            aria-pressed={recording}
+            aria-keyshortcuts={pttMode ? "Space Enter" : undefined}
             className={`relative flex h-14 w-14 shrink-0 select-none items-center justify-center rounded-full text-2xl shadow-lg transition disabled:opacity-50 ${
               recording ? "bg-destructive text-destructive-foreground pulse-ring" : "bg-primary text-primary-foreground"
             }`}
@@ -2081,20 +2147,24 @@ function Composer({
               mockVoice
                 ? "Mock voice input"
                 : pttMode
-                  ? "Hold to talk"
+                  ? recording
+                    ? "Recording — release Space or Enter to stop, Esc to cancel"
+                    : "Hold Space or Enter to talk"
                   : recording
-                    ? "Stop recording"
+                    ? "Stop recording (Esc to cancel)"
                     : "Start recording"
             }
             title={
               mockVoice
                 ? "Mock voice (typed simulation)"
                 : pttMode
-                  ? "Push-to-talk (hold)"
+                  ? "Push-to-talk (hold mic, Space, or Enter)"
                   : "Tap to talk"
             }
           >
-            {mockVoice ? "💬" : transcribing ? "⏳" : recording ? "■" : "🎙"}
+            <span aria-hidden="true">
+              {mockVoice ? "💬" : transcribing ? "⏳" : recording ? "■" : "🎙"}
+            </span>
           </button>
           <form onSubmit={submit} className="flex flex-1 items-center gap-2">
             <input
@@ -2164,7 +2234,12 @@ function SttStatusPanel({
             : "border-border bg-muted/40 text-muted-foreground";
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs ${stateColor}`}>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs ${stateColor}`}
+    >
       <div className="flex items-center gap-2 font-medium">
         {status.state === "recording" && <span>●</span>}
         {status.state === "transcribing" && <span>⏳</span>}
@@ -2223,18 +2298,25 @@ function SttStatusPanel({
         <button
           type="button"
           onClick={onPttToggle}
+          aria-pressed={pttMode}
+          aria-label={
+            pttMode
+              ? "Push-to-talk on — hold Space, Enter, or the mic to record"
+              : "Push-to-talk off — tap the mic to toggle recording"
+          }
           className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
             pttMode
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
           }`}
-          title="Push-to-talk: hold the mic to record"
+          title="Push-to-talk: hold the mic (or Space/Enter) to record. Esc cancels."
         >
           {pttMode ? "PTT on" : "PTT off"}
         </button>
         <button
           type="button"
           onClick={onMicTest}
+          aria-label="Open microphone test"
           className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
         >
           Mic test
