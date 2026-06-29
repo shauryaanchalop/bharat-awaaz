@@ -232,6 +232,7 @@ export function mutateDemo(fn: (s: DemoStore) => DemoStore) {
 }
 
 export function resetDemo() {
+  assertCapability("reset_demo");
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
   window.dispatchEvent(new CustomEvent(EVENT));
