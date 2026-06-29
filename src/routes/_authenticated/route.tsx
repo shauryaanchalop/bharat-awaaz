@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useAuth, useIsAdmin, useDemoRole } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map, UserCog } from "lucide-react";
+import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map, UserCog, Sparkles } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -25,6 +25,7 @@ function AuthedLayout() {
   const nav = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/app", label: "Voice Agent", icon: Home },
+    { to: "/schemes", label: "Schemes", icon: Sparkles },
     { to: "/household", label: "My Family", icon: Users },
     { to: "/grievances", label: "Grievances", icon: MessageSquare },
     { to: "/impact", label: "Impact", icon: Map },
