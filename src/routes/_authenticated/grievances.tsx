@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useDemoStore, DEMO_USER_ID, addGrievance, removeGrievance, bumpPriority } from "@/lib/demo/store";
+import { useRoleGuard } from "@/lib/auth/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
