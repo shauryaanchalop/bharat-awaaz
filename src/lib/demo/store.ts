@@ -177,6 +177,9 @@ function seed(): DemoStore {
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: isSubmitted ? (idx % 3 === 0 ? "in_progress" : "received") : null,
+      pipeline_updated_at: isSubmitted ? days(Math.max(0, s.age - 1)) : null,
+      pipeline_updated_by: isSubmitted ? "System (auto)" : null,
     };
   });
 
