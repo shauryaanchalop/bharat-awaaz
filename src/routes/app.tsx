@@ -2153,7 +2153,11 @@ function Composer({
             pttMode={pttMode}
             onPttToggle={() => setPttMode((v) => !v)}
             onMicTest={() => setShowMicTest(true)}
+            canRetry={canRetry && !recording && !transcribing}
+            lastSource={status.source}
+            onRetry={retryTranscription}
           />
+
           {pending && (
             <TranscriptConfirm
               initialText={pending.text}
