@@ -163,7 +163,7 @@ function AdminPage() {
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
+                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Pipeline</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
                 <tbody>
                   {visibleGrievances.map((g) => (
                     <tr key={g.id} className="border-t align-top">
@@ -174,6 +174,34 @@ function AdminPage() {
                       <td className="p-3 text-xs">{userById[g.user_id]?.display_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{g.ministry ?? "—"}</td>
                       <td className="p-3"><StatusBadge status={g.status} regId={g.registration_id} /></td>
+                      <td className="p-3 min-w-[180px]">
+                        {g.status === "submitted" ? (
+                          <div className="space-y-1.5">
+                            <PipelinePill status={g.pipeline_status} />
+                            <Select
+                              value={g.pipeline_status ?? undefined}
+                              onValueChange={(v) => {
+                                setPipelineStatus(g.id, v as PipelineStatus);
+                                toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Set status…" /></SelectTrigger>
+                              <SelectContent>
+                                {PIPELINE_STATUSES.map((s) => (
+                                  <SelectItem key={s} value={s} className="text-xs">{pipelineLabel(s)}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {g.pipeline_updated_at && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {g.pipeline_updated_by ?? "—"} · {new Date(g.pipeline_updated_at).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="p-3">
                         {g.review_decision === "approved" && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
                         {g.review_decision === "rejected" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>}
@@ -198,7 +226,7 @@ function AdminPage() {
                     </tr>
                   ))}
                   {visibleGrievances.length === 0 && (
-                    <tr><td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">No grievances match this filter.</td></tr>
+                    <tr><td colSpan={8} className="p-8 text-center text-sm text-muted-foreground">No grievances match this filter.</td></tr>
                   )}
                 </tbody>
               </table>
