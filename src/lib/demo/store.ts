@@ -292,6 +292,9 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: null,
+      pipeline_updated_at: null,
+      pipeline_updated_by: null,
     };
     const a: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "create", detail: "Manual draft", created_at: g.created_at };
     return { ...s, grievances: [g, ...s.grievances], audit: [a, ...s.audit] };
