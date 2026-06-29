@@ -48,6 +48,7 @@ export const Route = createFileRoute("/_authenticated/grievances")({
 function GrievancesPage() {
   useRoleGuard("user");
   const store = useDemoStore();
+  const navigate = useNavigate();
   const items = store.grievances.filter((g) => g.user_id === DEMO_USER_ID);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", ministry: "", description: "" });
@@ -61,6 +62,14 @@ function GrievancesPage() {
     toast.success("Grievance saved.");
     setOpen(false);
     setForm({ subject: "", ministry: "", description: "" });
+  }
+
+  function quickSubmit(preset: typeof QUICK_PRESETS[number]) {
+    const g = quickSubmitGrievance(preset);
+    toast.success(`Submitted — ${g?.registration_id ?? "registered"}`, {
+      description: "Now visible in the Admin pipeline.",
+      action: { label: "Open Admin", onClick: () => navigate({ to: "/admin" }) },
+    });
   }
 
   function remove(id: string) {
