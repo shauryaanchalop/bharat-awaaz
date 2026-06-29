@@ -323,7 +323,7 @@ export function quickSubmitGrievance(input: { subject: string; ministry: string;
     const a2: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "submit", detail: `CPGRAMS accepted — ${reg}`, created_at: now };
     return { ...s, grievances: [g, ...s.grievances], audit: [a2, a1, ...s.audit] };
   });
-  return created;
+  return created as DemoGrievance | null;
 }
 
 export function removeGrievance(id: string) {
