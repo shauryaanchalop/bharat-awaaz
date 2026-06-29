@@ -175,6 +175,8 @@ function stepIndexFor(g: DemoGrievance | undefined): { idx: number; failed: bool
 }
 
 function SchemesPage() {
+  useRoleGuard(["user", "admin"]); // both can browse; mutations gated below
+  const canStart = useCan("start_application");
   const store = useDemoStore();
   const [query, setQuery] = useState("");
 
