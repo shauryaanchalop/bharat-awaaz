@@ -4,6 +4,7 @@ import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -67,7 +68,10 @@ function AuthedLayout() {
           })}
         </nav>
         <div className="p-3 border-t space-y-2">
-          <div className="px-3 py-2 text-xs text-muted-foreground truncate">{user?.email}</div>
+          <div className="flex items-center justify-between px-1">
+            <div className="px-2 py-1 text-xs text-muted-foreground truncate">{user?.email}</div>
+            <ThemeToggle />
+          </div>
           <Button variant="outline" size="sm" className="w-full" onClick={signOut}>
             <LogOut className="w-4 h-4 mr-2" /> Sign out
           </Button>
@@ -77,7 +81,10 @@ function AuthedLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between p-3 border-b bg-card">
           <Link to="/dashboard" className="font-bold">भारत-आवाज़</Link>
-          <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
+          </div>
         </header>
         <nav className="md:hidden flex overflow-x-auto border-b bg-card">
           {nav.map((item) => (

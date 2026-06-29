@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
 import { MicTestDialog } from "@/components/MicTest";
+import { BackButton } from "@/components/BackButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const searchSchema = z.object({ lang: z.string().optional() });
 
@@ -454,6 +456,7 @@ function AppPage() {
 
       <header className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4">
         <div className="flex items-center gap-3">
+          <BackButton to="/" label="Home" />
           <div className="font-display text-xl font-bold">भारत-आवाज़</div>
           <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent-foreground">
             agent live
@@ -487,6 +490,7 @@ function AppPage() {
               </option>
             ))}
           </select>
+          <ThemeToggle />
         </div>
       </header>
 
