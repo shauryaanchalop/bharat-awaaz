@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
+import { Route as ApiSamplesRouteImport } from './routes/api/samples'
 import { Route as AuthenticatedSchemesRouteImport } from './routes/_authenticated/schemes'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedHouseholdRouteImport } from './routes/_authenticated/household'
@@ -62,6 +63,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
   id: '/api/templates',
   path: '/api/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSamplesRoute = ApiSamplesRouteImport.update({
+  id: '/api/samples',
+  path: '/api/samples',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSchemesRoute = AuthenticatedSchemesRouteImport.update({
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/schemes': typeof AuthenticatedSchemesRoute
+  '/api/samples': typeof ApiSamplesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -163,6 +170,7 @@ export interface FileRoutesByTo {
   '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/schemes': typeof AuthenticatedSchemesRoute
+  '/api/samples': typeof ApiSamplesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/_authenticated/household': typeof AuthenticatedHouseholdRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/schemes': typeof AuthenticatedSchemesRoute
+  '/api/samples': typeof ApiSamplesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
     | '/household'
     | '/profile'
     | '/schemes'
+    | '/api/samples'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/household'
     | '/profile'
     | '/schemes'
+    | '/api/samples'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '/_authenticated/household'
     | '/_authenticated/profile'
     | '/_authenticated/schemes'
+    | '/api/samples'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -269,6 +281,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ImpactRoute: typeof ImpactRoute
   KioskRoute: typeof KioskRoute
+  ApiSamplesRoute: typeof ApiSamplesRoute
   ApiTemplatesRoute: typeof ApiTemplatesRoute
   ApiAgentResumeRoute: typeof ApiAgentResumeRoute
   ApiAgentStreamRoute: typeof ApiAgentStreamRoute
@@ -328,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/api/templates'
       fullPath: '/api/templates'
       preLoaderRoute: typeof ApiTemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/samples': {
+      id: '/api/samples'
+      path: '/api/samples'
+      fullPath: '/api/samples'
+      preLoaderRoute: typeof ApiSamplesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/schemes': {
@@ -452,6 +472,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ImpactRoute: ImpactRoute,
   KioskRoute: KioskRoute,
+  ApiSamplesRoute: ApiSamplesRoute,
   ApiTemplatesRoute: ApiTemplatesRoute,
   ApiAgentResumeRoute: ApiAgentResumeRoute,
   ApiAgentStreamRoute: ApiAgentStreamRoute,
