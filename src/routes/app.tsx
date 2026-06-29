@@ -1926,9 +1926,9 @@ function Composer({
         setStatus({
           state: "ok",
           source: data.source,
-          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"}.`,
+          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
         });
-        onSend(data.translatedEnglish || data.transcript);
+        setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
       } else {
         setStatus({
           state: "error",
