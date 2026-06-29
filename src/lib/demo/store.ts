@@ -3,6 +3,7 @@
 // shows realistic information from the very first visit.
 
 import { useEffect, useState } from "react";
+import { assertCapability } from "@/lib/auth/hooks";
 
 const KEY = "bharat-awaaz.demo-store.v2";
 const EVENT = "demo-store-change";
