@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, Users, IndianRupee, MapPin, ArrowRight } from "lucide-react";
 import { getImpactStats } from "@/lib/impact.functions";
+import { BackButton } from "@/components/BackButton";
 
 export const Route = createFileRoute("/impact")({
   head: () => ({
