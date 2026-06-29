@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
 import { useDemoStore, resetDemo, reviewGrievance, clearReview, type DemoGrievance } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
