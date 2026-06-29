@@ -80,10 +80,13 @@ function Impact() {
       <div className="grid-bg pointer-events-none absolute inset-0 opacity-30" />
 
       <nav className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[var(--saffron)] to-[var(--india-green)] font-display text-lg font-bold text-black">भ</div>
-          <div className="font-display text-base font-semibold tracking-tight">Bharat-Awaaz</div>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[var(--saffron)] to-[var(--india-green)] font-display text-lg font-bold text-black">भ</div>
+            <div className="font-display text-base font-semibold tracking-tight">Bharat-Awaaz</div>
+          </Link>
+          <BackButton to="/" label="Home" />
+        </div>
         <Link to="/app" search={{ lang: "hi" }} className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:brightness-110">
           Launch app <ArrowRight className="h-3.5 w-3.5" />
         </Link>
