@@ -112,6 +112,7 @@ function newSessionId() {
 }
 
 function AppPage() {
+  useRoleGuard("user");
   const { lang: langSearch } = Route.useSearch();
   const [lang, setLang] = useState<LangCode>(((langSearch as LangCode) || "hi") as LangCode);
   const t = UI_STRINGS[lang];
