@@ -1,45 +1,53 @@
 import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+/**
+ * Demo-mode auth: no Supabase sign-in required. A synthetic "citizen" user is
+ * always available, and the role (user vs admin) is toggled via localStorage
+ * so the prototype can showcase both panels without an account.
+ */
 
-  useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+export type DemoRole = "user" | "admin";
 
-  return { user, loading };
+export const DEMO_ROLE_KEY = "bharat-awaaz.demo-role";
+
+const DEMO_USER = {
+  id: "00000000-0000-0000-0000-000000000001",
+  email: "demo.citizen@bharat-awaaz.in",
+  user_metadata: { full_name: "Demo Citizen" },
+} as const;
+
+export function getDemoRole(): DemoRole {
+  if (typeof window === "undefined") return "user";
+  const v = window.localStorage.getItem(DEMO_ROLE_KEY);
+  return v === "admin" ? "admin" : "user";
 }
 
-export function useIsAdmin(userId: string | undefined) {
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+export function setDemoRole(role: DemoRole) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_ROLE_KEY, role);
+  window.dispatchEvent(new CustomEvent("demo-role-change", { detail: role }));
+}
+
+export function useDemoRole(): [DemoRole, (r: DemoRole) => void] {
+  const [role, setRole] = useState<DemoRole>(() => getDemoRole());
   useEffect(() => {
-    if (!userId) {
-      setIsAdmin(false);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "admin")
-      .maybeSingle()
-      .then(({ data }) => {
-        setIsAdmin(!!data);
-        setLoading(false);
-      });
-  }, [userId]);
-  return { isAdmin, loading };
+    const onChange = () => setRole(getDemoRole());
+    window.addEventListener("demo-role-change", onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener("demo-role-change", onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
+  return [role, setDemoRole];
+}
+
+export function useAuth() {
+  // Demo mode: synthetic user, never loading.
+  return { user: DEMO_USER as unknown as { id: string; email: string }, loading: false };
+}
+
+export function useIsAdmin(_userId?: string) {
+  const [role] = useDemoRole();
+  return { isAdmin: role === "admin", loading: false };
 }

@@ -60,7 +60,7 @@ function Landing() {
         <div className="hidden items-center gap-1 md:flex">
           <Link to="/impact" className="rounded-full px-4 py-2 text-sm text-muted-foreground transition hover:text-foreground">Impact</Link>
           <Link to="/kiosk" className="rounded-full px-4 py-2 text-sm text-muted-foreground transition hover:text-foreground">Kiosk Mode</Link>
-          <Link to="/auth" className="rounded-full px-4 py-2 text-sm text-muted-foreground transition hover:text-foreground">Sign in</Link>
+          <Link to="/dashboard" className="rounded-full px-4 py-2 text-sm text-muted-foreground transition hover:text-foreground">Try demo</Link>
           <Link to="/app" search={{ lang }} className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:brightness-110">
             Launch app <ArrowRight className="h-3.5 w-3.5" />
           </Link>
@@ -204,8 +204,8 @@ function Landing() {
             icon={Users}
             title="Family Profiles"
             desc="One account handles schemes for your parents, spouse, children. Switch personas in one tap."
-            link="/auth"
-            cta="Sign up free"
+            link="/dashboard"
+            cta="Open demo"
           />
         </div>
       </section>
