@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useDemoStore, DEMO_USER_ID, addGrievance, removeGrievance, bumpPriority } from "@/lib/demo/store";
+import { useDemoStore, DEMO_USER_ID, addGrievance, removeGrievance, bumpPriority, quickSubmitGrievance } from "@/lib/demo/store";
 import { useRoleGuard } from "@/lib/auth/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Zap } from "lucide-react";
 import { StatusBadge } from "./dashboard";
+
+const QUICK_PRESETS: Array<{ subject: string; ministry: string; scheme: string; description: string }> = [
+  {
+    subject: "PM-KISAN installment not credited despite valid eKYC",
+    ministry: "Agriculture & Farmers Welfare",
+    scheme: "PM-KISAN",
+    description: "Beneficiary ID active since 2020. Last credit received earlier this year. eKYC re-verified at CSC. Requesting release of the pending installment.",
+  },
+  {
+    subject: "Ujjwala refill subsidy reversed without notice",
+    ministry: "Petroleum & Natural Gas",
+    scheme: "PMUY",
+    description: "Subsidy of Rs 300 not credited for last 3 cylinder refills. Bank account is Aadhaar-seeded and active. Requesting reconciliation.",
+  },
+  {
+    subject: "Ration card e-KYC failing on FPS POS device",
+    ministry: "Food & Public Distribution",
+    scheme: "NFSA",
+    description: "Fingerprint biometric mismatch for an elderly member of the household. OTP fallback is disabled at the Fair Price Shop. Requesting alternative verification.",
+  },
+  {
+    subject: "PMAY-Gramin first instalment pending for 7 months",
+    ministry: "Rural Development",
+    scheme: "PMAY-G",
+    description: "House sanctioned in cycle 2024-25. Foundation cast and geo-tag uploaded. First instalment not released despite multiple block-office visits.",
+  },
+];
+
 
 export const Route = createFileRoute("/_authenticated/grievances")({
   head: () => ({ meta: [{ title: "My Grievances — Bharat-Awaaz" }] }),
@@ -20,6 +48,7 @@ export const Route = createFileRoute("/_authenticated/grievances")({
 function GrievancesPage() {
   useRoleGuard("user");
   const store = useDemoStore();
+  const navigate = useNavigate();
   const items = store.grievances.filter((g) => g.user_id === DEMO_USER_ID);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ subject: "", ministry: "", description: "" });
@@ -33,6 +62,14 @@ function GrievancesPage() {
     toast.success("Grievance saved.");
     setOpen(false);
     setForm({ subject: "", ministry: "", description: "" });
+  }
+
+  function quickSubmit(preset: typeof QUICK_PRESETS[number]) {
+    const g = quickSubmitGrievance(preset);
+    toast.success(`Submitted — ${g?.registration_id ?? "registered"}`, {
+      description: "Now visible in the Admin pipeline.",
+      action: { label: "Open Admin", onClick: () => navigate({ to: "/admin" }) },
+    });
   }
 
   function remove(id: string) {
@@ -69,6 +106,32 @@ function GrievancesPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card className="p-5 border-primary/30 bg-primary/5">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-md bg-primary/10 text-primary"><Zap className="w-5 h-5" /></div>
+          <div>
+            <h2 className="font-semibold">One-click submit</h2>
+            <p className="text-sm text-muted-foreground">Pick a common grievance template — it's created, signed off, and dropped into the Admin pipeline instantly.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {QUICK_PRESETS.map((p) => (
+            <button
+              key={p.subject}
+              onClick={() => quickSubmit(p)}
+              className="text-left p-3 rounded-lg border bg-background hover:border-primary hover:shadow-sm transition group"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-medium text-primary">{p.scheme}</span>
+                <span className="text-xs text-muted-foreground group-hover:text-primary">Submit →</span>
+              </div>
+              <div className="text-sm font-medium line-clamp-2">{p.subject}</div>
+              <div className="text-xs text-muted-foreground mt-1">{p.ministry}</div>
+            </button>
+          ))}
+        </div>
+      </Card>
 
       {items.length === 0 ? (
         <Card className="p-12 text-center text-muted-foreground">
