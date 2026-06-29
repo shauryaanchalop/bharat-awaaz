@@ -2043,6 +2043,27 @@ function Composer({
             onPttToggle={() => setPttMode((v) => !v)}
             onMicTest={() => setShowMicTest(true)}
           />
+          {pending && (
+            <TranscriptConfirm
+              initialText={pending.text}
+              source={pending.source}
+              onConfirm={(finalText) => {
+                onSend(finalText);
+                setPending(null);
+                setStatus({ state: "idle" });
+              }}
+              onDiscard={() => {
+                setPending(null);
+                setStatus({ state: "idle" });
+              }}
+              onRetake={() => {
+                setPending(null);
+                setStatus({ state: "idle" });
+                if (!mockVoice) startReal();
+                else startMock();
+              }}
+            />
+          )}
         </div>
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <button
