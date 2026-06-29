@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DEMO_USER_ID, addGrievance, useDemoStore, type DemoGrievance } from "@/lib/demo/store";
+import { useCan, useRoleGuard } from "@/lib/auth/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
