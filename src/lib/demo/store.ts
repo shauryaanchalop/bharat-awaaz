@@ -33,6 +33,9 @@ export type DemoMember = {
 
 export type ReviewDecision = "approved" | "rejected";
 
+export type PipelineStatus = "received" | "in_progress" | "resolved" | "closed";
+export const PIPELINE_STATUSES: PipelineStatus[] = ["received", "in_progress", "resolved", "closed"];
+
 export type DemoGrievance = {
   id: string;
   user_id: string;
@@ -52,6 +55,9 @@ export type DemoGrievance = {
   review_notes: string | null;
   reviewed_at: string | null;
   reviewer: string | null;
+  pipeline_status: PipelineStatus | null;
+  pipeline_updated_at: string | null;
+  pipeline_updated_by: string | null;
 };
 
 export type DemoTemplate = {
