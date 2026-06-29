@@ -289,6 +289,43 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
   });
 }
 
+// One-click submit: create a grievance AND push it straight into the
+// "submitted" state with a fake CPGRAMS registration id, so it lands in the
+// Admin review queue immediately.
+export function quickSubmitGrievance(input: { subject: string; ministry: string; description: string; scheme?: string }) {
+  assertCapability("create_grievance");
+  let created: DemoGrievance | null = null;
+  mutateDemo((s) => {
+    const now = new Date().toISOString();
+    const reg = `CPGRAMS/2026/${String(Math.floor(100000 + Math.random() * 899999))}`;
+    const g: DemoGrievance = {
+      id: rid("g_"),
+      user_id: DEMO_USER_ID,
+      subject: input.subject,
+      ministry: input.ministry || null,
+      description: input.description,
+      status: "submitted",
+      registration_id: reg,
+      priority: 0,
+      scheme: input.scheme ?? null,
+      state: s.profile.state,
+      attempts: 1,
+      last_error: null,
+      created_at: now,
+      submitted_at: now,
+      review_decision: null,
+      review_notes: null,
+      reviewed_at: null,
+      reviewer: null,
+    };
+    created = g;
+    const a1: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "create", detail: "One-click submit", created_at: now };
+    const a2: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "submit", detail: `CPGRAMS accepted — ${reg}`, created_at: now };
+    return { ...s, grievances: [g, ...s.grievances], audit: [a2, a1, ...s.audit] };
+  });
+  return created;
+}
+
 export function removeGrievance(id: string) {
   assertCapability("edit_own_grievance");
   mutateDemo((s) => ({
