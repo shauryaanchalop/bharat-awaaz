@@ -2,6 +2,46 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Stage = "idle" | "recording" | "transcribing" | "result" | "error";
 
+export type LastTestResult = {
+  at: number;
+  status: "result" | "error";
+  transcript?: string;
+  source?: string;
+  error?: string;
+  lang: string;
+  durationMs: number;
+  avgLevel: number;
+  peakLevel: number;
+  sampleCount: number;
+};
+
+const LAST_TEST_KEY = "bharat_awaaz_last_mic_test";
+
+export function loadLastMicTest(): LastTestResult | null {
+  try {
+    const raw = localStorage.getItem(LAST_TEST_KEY);
+    return raw ? (JSON.parse(raw) as LastTestResult) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastTest(r: LastTestResult) {
+  try {
+    localStorage.setItem(LAST_TEST_KEY, JSON.stringify(r));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+export function clearLastMicTest() {
+  try {
+    localStorage.removeItem(LAST_TEST_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function MicTestDialog({
   open,
   onClose,
@@ -18,9 +58,12 @@ export function MicTestDialog({
   const [source, setSource] = useState<string>("");
   const [errMsg, setErrMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [lastTest, setLastTest] = useState<LastTestResult | null>(null);
 
   const recRef = useRef<{ stop: () => Promise<Blob>; cancel: () => void } | null>(null);
   const timerRef = useRef<number | null>(null);
+  const allLevelsRef = useRef<number[]>([]);
+  const startedAtRef = useRef<number>(0);
 
   const reset = useCallback(() => {
     setStage("idle");
@@ -30,10 +73,13 @@ export function MicTestDialog({
     setSource("");
     setErrMsg("");
     setElapsed(0);
+    allLevelsRef.current = [];
   }, []);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setLastTest(loadLastMicTest());
+    } else {
       recRef.current?.cancel();
       recRef.current = null;
       if (timerRef.current) window.clearInterval(timerRef.current);
@@ -44,6 +90,7 @@ export function MicTestDialog({
   const runTest = useCallback(async () => {
     reset();
     setStage("recording");
+    startedAtRef.current = Date.now();
     try {
       const { startWavRecording, bytesToBase64 } = await import("@/lib/audio/wav");
       const localLevels: number[] = [];
@@ -52,19 +99,17 @@ export function MicTestDialog({
         onLevel: (rms) => {
           setLevel(rms);
           localLevels.push(rms);
+          allLevelsRef.current.push(rms);
           if (localLevels.length > 60) localLevels.shift();
           setLevels([...localLevels]);
         },
-        onMaxReached: () => {
-          // finish naturally below
-        },
+        onMaxReached: () => {},
       });
       recRef.current = rec;
       timerRef.current = window.setInterval(() => {
         setElapsed(Math.floor(rec.elapsedMs()));
       }, 100);
 
-      // Hard stop at 2s
       await new Promise((r) => setTimeout(r, 2000));
       if (timerRef.current) {
         window.clearInterval(timerRef.current);
@@ -73,7 +118,24 @@ export function MicTestDialog({
       const blob = await rec.stop();
       recRef.current = null;
 
+      const all = allLevelsRef.current;
+      const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+      const peak = all.length ? Math.max(...all) : 0;
+      const durationMs = Date.now() - startedAtRef.current;
+
       if (blob.size < 2048) {
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "error",
+          error: "Recording was empty.",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
         setStage("error");
         setErrMsg("Recording was empty. Check your microphone and try again.");
         return;
@@ -95,21 +157,64 @@ export function MicTestDialog({
         error?: string;
       };
       if (data.ok && (data.transcript || data.translatedEnglish)) {
-        setTranscript(data.transcript || data.translatedEnglish || "");
+        const text = data.transcript || data.translatedEnglish || "";
+        setTranscript(text);
         setSource(data.source || "unknown");
         setStage("result");
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "result",
+          transcript: text,
+          source: data.source || "unknown",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
       } else {
         setStage("error");
         setErrMsg(data.error || "Transcription failed. Try again or use text input.");
         setSource(data.source || "");
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "error",
+          error: data.error || "Transcription failed.",
+          source: data.source || "",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
       }
     } catch (err) {
-      setStage("error");
-      setErrMsg(
+      const durationMs = Date.now() - startedAtRef.current;
+      const all = allLevelsRef.current;
+      const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+      const peak = all.length ? Math.max(...all) : 0;
+      const msg =
         err instanceof Error && err.message.includes("Permission")
           ? "Microphone permission denied. Allow mic access in your browser settings."
-          : "Could not start the microphone. Is another app using it?",
-      );
+          : "Could not start the microphone. Is another app using it?";
+      setStage("error");
+      setErrMsg(msg);
+      const r: LastTestResult = {
+        at: Date.now(),
+        status: "error",
+        error: msg,
+        lang,
+        durationMs,
+        avgLevel: avg,
+        peakLevel: peak,
+        sampleCount: all.length,
+      };
+      saveLastTest(r);
+      setLastTest(r);
     }
   }, [lang, reset]);
 
@@ -174,6 +279,49 @@ export function MicTestDialog({
           </div>
         )}
 
+        {lastTest && stage === "idle" && (
+          <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="font-medium text-foreground">
+                Last test ·{" "}
+                <span className={lastTest.status === "result" ? "text-[var(--india-green)]" : "text-destructive"}>
+                  {lastTest.status === "result" ? "✓ success" : "✗ failed"}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  clearLastMicTest();
+                  setLastTest(null);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+              <div>When: {new Date(lastTest.at).toLocaleString()}</div>
+              <div>Lang: {lastTest.lang}</div>
+              <div>Engine: {lastTest.source || "—"}</div>
+              <div>Duration: {(lastTest.durationMs / 1000).toFixed(1)}s</div>
+              <div>Avg level: {(lastTest.avgLevel * 100).toFixed(1)}%</div>
+              <div>Peak level: {(lastTest.peakLevel * 100).toFixed(1)}%</div>
+            </div>
+            {lastTest.transcript && (
+              <div className="mt-1.5 text-foreground">
+                Heard: <span className="italic">"{lastTest.transcript}"</span>
+              </div>
+            )}
+            {lastTest.error && (
+              <div className="mt-1.5 text-destructive">Error: {lastTest.error}</div>
+            )}
+            {lastTest.status === "error" && lastTest.peakLevel < 0.02 && (
+              <div className="mt-1.5 text-amber-600 dark:text-amber-400">
+                ⚠ Very low audio level — check mic permissions, hardware, or move closer.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-5 flex flex-wrap gap-2">
           <button
             onClick={runTest}
@@ -181,7 +329,9 @@ export function MicTestDialog({
             className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             {stage === "idle"
-              ? "🎙 Start mic test"
+              ? lastTest
+                ? "🔁 Run mic test again"
+                : "🎙 Start mic test"
               : stage === "recording"
                 ? "Recording…"
                 : stage === "transcribing"
