@@ -240,6 +240,7 @@ export function resetDemo() {
 
 // --- mutators used by pages ---
 export function addMember(input: Omit<DemoMember, "id" | "created_at" | "user_id" | "is_primary"> & { is_primary?: boolean }) {
+  assertCapability("manage_household");
   mutateDemo((s) => ({
     ...s,
     members: [
