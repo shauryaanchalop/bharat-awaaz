@@ -1952,7 +1952,7 @@ function Composer({
       setPartial("");
       finishingRef.current = false;
     }
-  }, [lang, onSend]);
+  }, [lang]);
 
   const startReal = useCallback(async () => {
     if (recording) return;
