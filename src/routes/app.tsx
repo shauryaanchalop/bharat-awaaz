@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useRoleGuard } from "@/lib/auth/hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
