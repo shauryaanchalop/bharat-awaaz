@@ -1858,6 +1858,7 @@ function Composer({
   const [pttMode, setPttMode] = useState(false);
   const [status, setStatus] = useState<SttStatus>({ state: "idle" });
   const [showMicTest, setShowMicTest] = useState(false);
+  const [pending, setPending] = useState<{ text: string; source?: string } | null>(null);
 
   const recorderRef = useRef<{
     stop: () => Promise<Blob>;
@@ -1872,8 +1873,11 @@ function Composer({
     const utterance = window.prompt(
       "🎙 Mock voice mode\nType what the user would have said (in any language). The agent will treat this as the ASR transcript:",
     );
-    if (utterance && utterance.trim()) onSend(utterance.trim());
-  }, [onSend]);
+    if (utterance && utterance.trim()) {
+      setPending({ text: utterance.trim(), source: "mock" });
+      setStatus({ state: "ok", source: "mock", message: "Mock transcript ready — review and send." });
+    }
+  }, []);
 
   const stop = useCallback(async () => {
     if (finishingRef.current) return;
@@ -1922,9 +1926,9 @@ function Composer({
         setStatus({
           state: "ok",
           source: data.source,
-          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"}.`,
+          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
         });
-        onSend(data.translatedEnglish || data.transcript);
+        setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
       } else {
         setStatus({
           state: "error",
@@ -1948,7 +1952,7 @@ function Composer({
       setPartial("");
       finishingRef.current = false;
     }
-  }, [lang, onSend]);
+  }, [lang]);
 
   const startReal = useCallback(async () => {
     if (recording) return;
@@ -2039,6 +2043,27 @@ function Composer({
             onPttToggle={() => setPttMode((v) => !v)}
             onMicTest={() => setShowMicTest(true)}
           />
+          {pending && (
+            <TranscriptConfirm
+              initialText={pending.text}
+              source={pending.source}
+              onConfirm={(finalText) => {
+                onSend(finalText);
+                setPending(null);
+                setStatus({ state: "idle" });
+              }}
+              onDiscard={() => {
+                setPending(null);
+                setStatus({ state: "idle" });
+              }}
+              onRetake={() => {
+                setPending(null);
+                setStatus({ state: "idle" });
+                if (!mockVoice) startReal();
+                else startMock();
+              }}
+            />
+          )}
         </div>
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <button
@@ -2322,6 +2347,110 @@ function DocumentUpload({
       />
       {busy && <div className="mt-2 text-xs text-muted-foreground">Reading spatially with vision model…</div>}
       <div className="mt-2 text-[10px] text-muted-foreground">Held in memory only · UID auto-masked</div>
+    </div>
+  );
+}
+
+function TranscriptConfirm({
+  initialText,
+  source,
+  onConfirm,
+  onDiscard,
+  onRetake,
+}: {
+  initialText: string;
+  source?: string;
+  onConfirm: (text: string) => void;
+  onDiscard: () => void;
+  onRetake: () => void;
+}) {
+  const [text, setText] = useState(initialText);
+  const [editing, setEditing] = useState(false);
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setText(initialText);
+    setEditing(false);
+  }, [initialText]);
+
+  useEffect(() => {
+    if (editing) ref.current?.focus();
+  }, [editing]);
+
+  const sourceLabel =
+    source === "bhashini"
+      ? "Bhashini"
+      : source === "lovable-ai"
+        ? "Lovable AI fallback"
+        : source === "mock"
+          ? "Mock voice"
+          : "Speech engine";
+
+  const empty = !text.trim();
+
+  return (
+    <div className="mt-2 rounded-xl border border-primary/40 bg-primary/5 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+        <div className="font-medium text-primary">
+          🔎 Review transcript before sending
+          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            via {sourceLabel}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          {editing ? "Done editing" : "✎ Edit"}
+        </button>
+      </div>
+      {editing ? (
+        <textarea
+          ref={ref}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !empty) {
+              e.preventDefault();
+              onConfirm(text.trim());
+            }
+          }}
+          rows={2}
+          className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+      ) : (
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          {text || <em className="text-muted-foreground">(empty)</em>}
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-xs">
+        <button
+          type="button"
+          onClick={onDiscard}
+          className="rounded-full border border-border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+        >
+          Discard
+        </button>
+        <button
+          type="button"
+          onClick={onRetake}
+          className="rounded-full border border-border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+        >
+          🎙 Re-record
+        </button>
+        <button
+          type="button"
+          disabled={empty}
+          onClick={() => onConfirm(text.trim())}
+          className="rounded-full bg-primary px-4 py-1.5 font-medium text-primary-foreground disabled:opacity-50"
+        >
+          Send ⏎
+        </button>
+      </div>
+      <div className="mt-1 text-[10px] text-muted-foreground">
+        Tip: ⌘/Ctrl + Enter to send while editing.
+      </div>
     </div>
   );
 }
