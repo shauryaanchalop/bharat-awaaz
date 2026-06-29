@@ -1,12 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo } from "@/lib/demo/store";
+import { useDemoStore, resetDemo, reviewGrievance, clearReview, type DemoGrievance } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Shield, RotateCcw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { StatusBadge } from "./dashboard";
 
 export const Route = createFileRoute("/_authenticated/admin")({
