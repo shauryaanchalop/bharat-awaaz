@@ -315,6 +315,7 @@ export function updateProfile(patch: Partial<Pick<DemoProfile, "display_name" | 
 }
 
 export function reviewGrievance(id: string, decision: ReviewDecision, notes: string, reviewer = "Admin (demo)") {
+  assertCapability("review_grievance");
   mutateDemo((s) => {
     const g = s.grievances.find((x) => x.id === id);
     if (!g) return s;
