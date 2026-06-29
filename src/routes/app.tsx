@@ -2632,3 +2632,181 @@ function TranscriptConfirm({
     </div>
   );
 }
+
+type SeededDoc = { id: string; kind: "aadhaar" | "ration" | "income" | "other"; fields: Record<string, string> };
+
+function SampleData({
+  sessionId,
+  templates,
+  onSeeded,
+}: {
+  sessionId: string;
+  templates: TemplateMeta[];
+  onSeeded: (docs: SeededDoc[]) => void;
+}) {
+  const [fixtures, setFixtures] = useState<Array<{ id: string; label: string; blurb: string }>>([]);
+  const [fixtureId, setFixtureId] = useState("");
+  const [formId, setFormId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/samples?mode=list")
+      .then((r) => r.json())
+      .then((d: { fixtures: Array<{ id: string; label: string; blurb: string }> }) => {
+        setFixtures(d.fixtures);
+        if (d.fixtures[0]) setFixtureId(d.fixtures[0].id);
+      })
+      .catch(() => setStatus("Could not load sample list."));
+  }, []);
+
+  useEffect(() => {
+    const first = templates.find((t) => !t.custom);
+    if (first && !formId) setFormId(first.id);
+  }, [templates, formId]);
+
+  const fixture = fixtures.find((f) => f.id === fixtureId);
+
+  const seed = useCallback(
+    async (replace: boolean) => {
+      if (!fixtureId) return;
+      setBusy(true);
+      setStatus(null);
+      try {
+        const r = await fetch("/api/samples", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "seed", sessionId, fixtureId, replace }),
+        });
+        const d = (await r.json()) as { ok: boolean; seeded: number; fixture: { label: string } };
+        if (!d.ok) throw new Error("seed failed");
+        // Hydrate local docs panel without waiting for SSE.
+        const fix = SAMPLE_DOCS_LOCAL[fixtureId] ?? [];
+        onSeeded(
+          fix.map((f, i) => ({
+            id: `seed_${Date.now()}_${i}`,
+            kind: f.kind,
+            fields: f.fields,
+          })),
+        );
+        setStatus(`Seeded ${d.seeded} document${d.seeded === 1 ? "" : "s"} from "${d.fixture.label}".`);
+      } catch (e) {
+        setStatus(e instanceof Error ? e.message : "seed failed");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [fixtureId, sessionId, onSeeded],
+  );
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/60 p-3 backdrop-blur">
+      <div className="mb-2 text-sm font-semibold">🧪 Demo samples</div>
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        Synthetic citizens + blank government forms so you can test extraction → auto-map → fill end-to-end without real documents.
+      </p>
+
+      <label className="mb-1 block text-[11px] text-muted-foreground">Sample citizen</label>
+      <select
+        value={fixtureId}
+        onChange={(e) => setFixtureId(e.target.value)}
+        disabled={busy || fixtures.length === 0}
+        className="mb-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+      >
+        {fixtures.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+      {fixture && <p className="mb-2 text-[11px] text-muted-foreground">{fixture.blurb}</p>}
+
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          disabled={busy || !fixtureId}
+          onClick={() => seed(false)}
+          className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+        >
+          {busy ? "Seeding…" : "Seed into session"}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !fixtureId}
+          onClick={() => seed(true)}
+          className="rounded-full border border-border px-3 py-1 text-xs hover:bg-muted disabled:opacity-50"
+          title="Clear existing extracted docs first"
+        >
+          Reset &amp; seed
+        </button>
+      </div>
+
+      {fixtureId && (
+        <div className="mb-3">
+          <div className="mb-1 text-[11px] text-muted-foreground">Download sample document cards (upload these to test the real extractor):</div>
+          <div className="flex flex-wrap gap-1.5">
+            {(["aadhaar", "ration", "income"] as const).map((k) => (
+              <a
+                key={k}
+                href={`/api/samples?mode=card&kind=${k}&fixtureId=${fixtureId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-border px-2.5 py-1 text-[11px] hover:bg-muted"
+              >
+                ⬇ {k}.svg
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="mb-1 block text-[11px] text-muted-foreground">Blank fillable form (PDF)</label>
+        <div className="flex gap-1.5">
+          <select
+            value={formId}
+            onChange={(e) => setFormId(e.target.value)}
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          >
+            {templates.filter((t) => !t.custom).map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <a
+            href={formId ? `/api/samples?mode=form&templateId=${formId}` : "#"}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!formId}
+            className={`rounded-full border border-border px-3 py-1 text-xs hover:bg-muted ${!formId ? "pointer-events-none opacity-50" : ""}`}
+          >
+            ⬇ PDF
+          </a>
+        </div>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          AcroForm fields match the template's field keys — pdf-lib injection just works.
+        </p>
+      </div>
+
+      {status && <div className="mt-2 text-[11px] text-muted-foreground">{status}</div>}
+    </div>
+  );
+}
+
+// Mirror of server fixtures (kind + fields only) so the docs panel hydrates
+// immediately on seed without waiting for the SSE document event.
+const SAMPLE_DOCS_LOCAL: Record<string, Array<{ kind: SeededDoc["kind"]; fields: Record<string, string> }>> = {
+  "sunita-rural-farmer": [
+    { kind: "aadhaar", fields: { applicant_name: "Sunita Devi", uid_number: "XXXXXXXX4521", dob: "12/07/1987", gender: "female", address_complete: "Vill. Bodhgaya, Gaya, Bihar", father_or_husband_name: "Ramesh Yadav" } },
+    { kind: "ration", fields: { card_number: "BR-GYA-0094521", head_of_family: "Sunita Devi", card_type: "BPL", members: "5" } },
+    { kind: "income", fields: { applicant_name: "Sunita Devi", annual_income: "96000", certificate_number: "INC/GYA/2025/3318" } },
+  ],
+  "ramesh-senior-pension": [
+    { kind: "aadhaar", fields: { applicant_name: "Ramesh Kumar", uid_number: "XXXXXXXX1108", dob: "1958", gender: "male", address_complete: "Lohta, Varanasi, UP" } },
+    { kind: "ration", fields: { card_number: "UP-VNS-0011082", head_of_family: "Ramesh Kumar", card_type: "AAY", members: "1" } },
+    { kind: "income", fields: { applicant_name: "Ramesh Kumar", annual_income: "42000", certificate_number: "INC/VNS/2025/0991" } },
+  ],
+  "asha-urban-mother": [
+    { kind: "aadhaar", fields: { applicant_name: "Asha Pillai", uid_number: "XXXXXXXX7732", dob: "03/11/1994", gender: "female", address_complete: "Vyttila, Kochi, Kerala", father_or_husband_name: "Sajeev Pillai" } },
+    { kind: "ration", fields: { card_number: "KL-EKM-0077320", head_of_family: "Sajeev Pillai", card_type: "PHH", members: "4" } },
+  ],
+};
