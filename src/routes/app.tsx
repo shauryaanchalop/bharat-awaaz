@@ -1868,6 +1868,9 @@ function Composer({
   const liveRef = useRef<{ stop: () => void } | null>(null);
   const timerRef = useRef<number | null>(null);
   const finishingRef = useRef(false);
+  // Cache the last recorded audio so users can retry transcription (or switch engine) without re-recording.
+  const lastAudioRef = useRef<{ b64: string; lang: string } | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
 
   const startMock = useCallback(() => {
     const utterance = window.prompt(
@@ -1878,6 +1881,65 @@ function Composer({
       setStatus({ state: "ok", source: "mock", message: "Mock transcript ready — review and send." });
     }
   }, []);
+
+  // Shared call to the ASR endpoint. Used by both the initial stop() and Retry.
+  const transcribe = useCallback(
+    async (b64: string, useLang: string, prefer: "auto" | "bhashini" | "lovable-ai") => {
+      setTranscribing(true);
+      setStatus({
+        state: "transcribing",
+        message:
+          prefer === "bhashini"
+            ? "Retrying with Bhashini…"
+            : prefer === "lovable-ai"
+              ? "Retrying with Lovable AI fallback…"
+              : "Sending audio to speech engine…",
+      });
+      try {
+        const res = await fetch("/api/bhashini/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioBase64: b64, lang: useLang, prefer }),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          transcript: string;
+          translatedEnglish: string;
+          source?: string;
+          error?: string;
+        };
+        if (data.ok && (data.translatedEnglish || data.transcript)) {
+          setStatus({
+            state: "ok",
+            source: data.source,
+            message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
+          });
+          setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
+        } else {
+          setStatus({
+            state: "error",
+            source: data.source,
+            message:
+              data.error ||
+              "Speech recognition could not understand the audio. Try again, speak louder, or type instead.",
+          });
+        }
+      } catch (err) {
+        console.error("[mic] transcription failed", err);
+        setStatus({
+          state: "error",
+          message:
+            err instanceof Error
+              ? `Transcription failed: ${err.message}`
+              : "Transcription failed. Check your network and try again.",
+        });
+      } finally {
+        setTranscribing(false);
+        setPartial("");
+      }
+    },
+    [],
+  );
 
   const stop = useCallback(async () => {
     if (finishingRef.current) return;
@@ -1905,54 +1967,39 @@ function Composer({
           state: "error",
           message: "Recording was too short or silent. Hold the button longer and speak clearly.",
         });
+        setCanRetry(false);
+        lastAudioRef.current = null;
         return;
       }
       const { bytesToBase64 } = await import("@/lib/audio/wav");
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const b64 = bytesToBase64(bytes);
-      const res = await fetch("/api/bhashini/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audioBase64: b64, lang }),
-      });
-      const data = (await res.json()) as {
-        ok: boolean;
-        transcript: string;
-        translatedEnglish: string;
-        source?: string;
-        error?: string;
-      };
-      if (data.ok && (data.translatedEnglish || data.transcript)) {
-        setStatus({
-          state: "ok",
-          source: data.source,
-          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"} — review and send.`,
-        });
-        setPending({ text: data.translatedEnglish || data.transcript, source: data.source });
-      } else {
-        setStatus({
-          state: "error",
-          source: data.source,
-          message:
-            data.error ||
-            "Speech recognition could not understand the audio. Try again, speak louder, or type instead.",
-        });
-      }
+      lastAudioRef.current = { b64, lang };
+      setCanRetry(true);
+      await transcribe(b64, lang, "auto");
     } catch (err) {
-      console.error("[mic] transcription failed", err);
+      console.error("[mic] recording failed", err);
       setStatus({
         state: "error",
         message:
           err instanceof Error
-            ? `Transcription failed: ${err.message}`
-            : "Transcription failed. Check your network and try again.",
+            ? `Recording failed: ${err.message}`
+            : "Recording failed. Try again.",
       });
     } finally {
-      setTranscribing(false);
-      setPartial("");
       finishingRef.current = false;
     }
-  }, [lang]);
+  }, [lang, transcribe]);
+
+  const retryTranscription = useCallback(
+    async (prefer: "auto" | "bhashini" | "lovable-ai") => {
+      const cached = lastAudioRef.current;
+      if (!cached) return;
+      setPending(null);
+      await transcribe(cached.b64, cached.lang, prefer);
+    },
+    [transcribe],
+  );
 
   const startReal = useCallback(async () => {
     if (recording) return;
@@ -2106,7 +2153,11 @@ function Composer({
             pttMode={pttMode}
             onPttToggle={() => setPttMode((v) => !v)}
             onMicTest={() => setShowMicTest(true)}
+            canRetry={canRetry && !recording && !transcribing}
+            lastSource={status.source}
+            onRetry={retryTranscription}
           />
+
           {pending && (
             <TranscriptConfirm
               initialText={pending.text}
@@ -2205,6 +2256,9 @@ function SttStatusPanel({
   pttMode,
   onPttToggle,
   onMicTest,
+  canRetry,
+  lastSource,
+  onRetry,
 }: {
   status: SttStatus;
   recording: boolean;
@@ -2214,7 +2268,14 @@ function SttStatusPanel({
   pttMode: boolean;
   onPttToggle: () => void;
   onMicTest: () => void;
+  canRetry: boolean;
+  lastSource?: string;
+  onRetry: (prefer: "auto" | "bhashini" | "lovable-ai") => void | Promise<void>;
 }) {
+  // Suggest the opposite engine when the user retries after a result/error.
+  const otherEngine: "bhashini" | "lovable-ai" =
+    lastSource === "bhashini" ? "lovable-ai" : "bhashini";
+  const otherLabel = otherEngine === "bhashini" ? "Bhashini" : "Lovable AI";
   const sourceLabel =
     status.source === "bhashini"
       ? "Bhashini"
@@ -2295,6 +2356,28 @@ function SttStatusPanel({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        {canRetry && (
+          <>
+            <button
+              type="button"
+              onClick={() => onRetry("auto")}
+              aria-label="Retry transcription with the last recording"
+              className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+              title="Re-run speech recognition on the last recording"
+            >
+              ↻ Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => onRetry(otherEngine)}
+              aria-label={`Retry transcription using ${otherLabel}`}
+              className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+              title={`Switch to ${otherLabel} and retry`}
+            >
+              Try {otherLabel}
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={onPttToggle}
@@ -2322,6 +2405,7 @@ function SttStatusPanel({
           Mic test
         </button>
       </div>
+
     </div>
   );
 }
