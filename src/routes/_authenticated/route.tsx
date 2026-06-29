@@ -22,7 +22,7 @@ function AuthedLayout() {
     router.navigate({ to: "/", replace: true });
   }
 
-  const nav = [
+  const citizenNav = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/app", label: "Voice Agent", icon: Home },
     { to: "/schemes", label: "Schemes", icon: Sparkles },
@@ -30,8 +30,14 @@ function AuthedLayout() {
     { to: "/grievances", label: "Grievances", icon: MessageSquare },
     { to: "/impact", label: "Impact", icon: Map },
     { to: "/profile", label: "Profile", icon: User },
-    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: Shield }] : []),
   ];
+  const adminNav = [
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/admin", label: "Admin Console", icon: Shield },
+    { to: "/impact", label: "Impact", icon: Map },
+    { to: "/profile", label: "Profile", icon: User },
+  ];
+  const nav = isAdmin ? adminNav : citizenNav;
 
   return (
     <div className="min-h-screen flex bg-muted/30">
