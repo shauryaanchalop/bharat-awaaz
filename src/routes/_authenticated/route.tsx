@@ -81,7 +81,10 @@ function AuthedLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden flex items-center justify-between p-3 border-b bg-card">
           <Link to="/dashboard" className="font-bold">भारत-आवाज़</Link>
-          <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
+          </div>
         </header>
         <nav className="md:hidden flex overflow-x-auto border-b bg-card">
           {nav.map((item) => (
