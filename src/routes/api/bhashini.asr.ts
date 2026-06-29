@@ -38,27 +38,54 @@ export const Route = createFileRoute("/api/bhashini/asr")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { audioBase64, lang } = (await request.json()) as {
+        const { audioBase64, lang, prefer } = (await request.json()) as {
           audioBase64: string;
           lang: string;
+          prefer?: "auto" | "bhashini" | "lovable-ai";
         };
         if (!audioBase64) return new Response("audioBase64 required", { status: 400 });
+        const mode = prefer ?? "auto";
 
-        // Try Bhashini first when configured.
-        if (bhashiniAvailable()) {
+        // Try Bhashini first unless caller asked to force the Lovable fallback.
+        if (mode !== "lovable-ai" && bhashiniAvailable()) {
           try {
             const result = await runAsrTranslate(audioBase64, lang || "hi");
             if (result && (result.transcript || result.translatedEnglish)) {
               return Response.json({ ok: true, source: "bhashini", ...result });
             }
           } catch (e) {
-            console.warn("[asr] bhashini failed, trying fallback", e);
+            console.warn("[asr] bhashini failed", e);
+            if (mode === "bhashini") {
+              return Response.json(
+                {
+                  ok: false,
+                  transcript: "",
+                  translatedEnglish: "",
+                  source: "bhashini",
+                  error: "Bhashini transcription failed. Try the Lovable AI fallback.",
+                },
+                { status: 200 },
+              );
+            }
           }
+        } else if (mode === "bhashini" && !bhashiniAvailable()) {
+          return Response.json(
+            {
+              ok: false,
+              transcript: "",
+              translatedEnglish: "",
+              source: "bhashini",
+              error: "Bhashini is not configured. Use the Lovable AI fallback instead.",
+            },
+            { status: 200 },
+          );
         }
 
-        // Fallback: Lovable AI STT
-        const fb = await lovableSttFallback(audioBase64, lang || "en");
-        if (fb) return Response.json({ ok: true, source: "lovable-ai", ...fb });
+        // Lovable AI fallback (or forced lovable-ai mode).
+        if (mode !== "bhashini") {
+          const fb = await lovableSttFallback(audioBase64, lang || "en");
+          if (fb) return Response.json({ ok: true, source: "lovable-ai", ...fb });
+        }
 
         return Response.json(
           {
