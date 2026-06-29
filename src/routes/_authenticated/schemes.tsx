@@ -339,7 +339,12 @@ function SchemesPage() {
                         </Button>
                       </Link>
                     ) : (
-                      <Button size="sm" onClick={() => startApplication(s)}>
+                      <Button
+                        size="sm"
+                        onClick={() => startApplication(s)}
+                        disabled={!canStart}
+                        title={canStart ? undefined : "Switch to Citizen role to start an application"}
+                      >
                         Start application
                       </Button>
                     )}
