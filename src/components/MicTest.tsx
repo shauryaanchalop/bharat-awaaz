@@ -279,6 +279,49 @@ export function MicTestDialog({
           </div>
         )}
 
+        {lastTest && stage === "idle" && (
+          <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="font-medium text-foreground">
+                Last test ·{" "}
+                <span className={lastTest.status === "result" ? "text-[var(--india-green)]" : "text-destructive"}>
+                  {lastTest.status === "result" ? "✓ success" : "✗ failed"}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  clearLastMicTest();
+                  setLastTest(null);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+              <div>When: {new Date(lastTest.at).toLocaleString()}</div>
+              <div>Lang: {lastTest.lang}</div>
+              <div>Engine: {lastTest.source || "—"}</div>
+              <div>Duration: {(lastTest.durationMs / 1000).toFixed(1)}s</div>
+              <div>Avg level: {(lastTest.avgLevel * 100).toFixed(1)}%</div>
+              <div>Peak level: {(lastTest.peakLevel * 100).toFixed(1)}%</div>
+            </div>
+            {lastTest.transcript && (
+              <div className="mt-1.5 text-foreground">
+                Heard: <span className="italic">"{lastTest.transcript}"</span>
+              </div>
+            )}
+            {lastTest.error && (
+              <div className="mt-1.5 text-destructive">Error: {lastTest.error}</div>
+            )}
+            {lastTest.status === "error" && lastTest.peakLevel < 0.02 && (
+              <div className="mt-1.5 text-amber-600 dark:text-amber-400">
+                ⚠ Very low audio level — check mic permissions, hardware, or move closer.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-5 flex flex-wrap gap-2">
           <button
             onClick={runTest}
@@ -286,7 +329,9 @@ export function MicTestDialog({
             className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
             {stage === "idle"
-              ? "🎙 Start mic test"
+              ? lastTest
+                ? "🔁 Run mic test again"
+                : "🎙 Start mic test"
               : stage === "recording"
                 ? "Recording…"
                 : stage === "transcribing"
