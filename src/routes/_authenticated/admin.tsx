@@ -1,15 +1,34 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo, reviewGrievance, clearReview, type DemoGrievance } from "@/lib/demo/store";
+import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw, Inbox, Loader2, CheckCheck, Archive } from "lucide-react";
+import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
+
+const PIPELINE_META: Record<PipelineStatus, { icon: typeof Inbox; cls: string }> = {
+  received: { icon: Inbox, cls: "text-sky-600 border-sky-500/40 bg-sky-500/10" },
+  in_progress: { icon: Loader2, cls: "text-amber-600 border-amber-500/40 bg-amber-500/10" },
+  resolved: { icon: CheckCheck, cls: "text-emerald-600 border-emerald-500/40 bg-emerald-500/10" },
+  closed: { icon: Archive, cls: "text-muted-foreground border-border bg-muted" },
+};
+
+function PipelinePill({ status }: { status: PipelineStatus | null }) {
+  if (!status) return <span className="text-xs text-muted-foreground">—</span>;
+  const { icon: Icon, cls } = PIPELINE_META[status];
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${cls}`}>
+      <Icon className="w-3 h-3" /> {pipelineLabel(status)}
+    </span>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin — Bharat-Awaaz" }] }),
