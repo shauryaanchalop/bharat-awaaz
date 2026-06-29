@@ -30,6 +30,8 @@ export type DemoMember = {
   created_at: string;
 };
 
+export type ReviewDecision = "approved" | "rejected";
+
 export type DemoGrievance = {
   id: string;
   user_id: string;
@@ -45,6 +47,10 @@ export type DemoGrievance = {
   last_error: string | null;
   created_at: string;
   submitted_at: string | null;
+  review_decision: ReviewDecision | null;
+  review_notes: string | null;
+  reviewed_at: string | null;
+  reviewer: string | null;
 };
 
 export type DemoTemplate = {
