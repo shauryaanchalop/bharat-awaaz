@@ -81,6 +81,21 @@ function AdminPage() {
         <Card className="p-5"><div className="text-sm text-muted-foreground">Audit events</div><div className="text-3xl font-bold tabular-nums">{store.audit.length}</div></Card>
       </div>
 
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-5 cursor-pointer hover:border-primary/60 transition" onClick={() => setGrievanceFilter("pending_review")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Awaiting review</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.pending}</div>
+        </Card>
+        <Card className="p-5 cursor-pointer hover:border-emerald-500/60 transition" onClick={() => setGrievanceFilter("approved")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Approved</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.approved}</div>
+        </Card>
+        <Card className="p-5 cursor-pointer hover:border-red-500/60 transition" onClick={() => setGrievanceFilter("rejected")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><XCircle className="w-4 h-4 text-red-500" /> Rejected</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.rejected}</div>
+        </Card>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-5">
           <div className="text-sm font-semibold mb-3">Pipeline by status</div>
