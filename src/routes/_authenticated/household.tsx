@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/lib/auth/hooks";
+import { useDemoStore, DEMO_USER_ID, addMember, removeMember } from "@/lib/demo/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -15,60 +14,26 @@ export const Route = createFileRoute("/_authenticated/household")({
   component: HouseholdPage,
 });
 
-type Member = {
-  id: string;
-  name: string;
-  relation: string;
-  age: number | null;
-  gender: string | null;
-  state: string | null;
-  occupation: string | null;
-  is_primary: boolean;
-};
-
 const RELATIONS = ["Self", "Spouse", "Father", "Mother", "Son", "Daughter", "Brother", "Sister", "Grandparent", "Other"];
 
 function HouseholdPage() {
-  const { user } = useAuth();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  const store = useDemoStore();
+  const members = store.members.filter((m) => m.user_id === DEMO_USER_ID);
   const [form, setForm] = useState({ name: "", relation: "Spouse", age: "", gender: "", state: "", occupation: "" });
-  const [saving, setSaving] = useState(false);
 
-  async function refresh() {
-    if (!user) return;
-    const { data } = await supabase.from("household_members").select("*").order("is_primary", { ascending: false }).order("created_at");
-    setMembers((data as Member[]) ?? []);
-    setLoading(false);
-  }
-  useEffect(() => { refresh(); }, [user]);
-
-  async function addMember(e: React.FormEvent) {
+  function add(e: React.FormEvent) {
     e.preventDefault();
-    if (!user) return;
-    setSaving(true);
-    const { error } = await supabase.from("household_members").insert({
-      user_id: user.id,
+    if (!form.name.trim()) return;
+    addMember({
       name: form.name,
       relation: form.relation,
       age: form.age ? parseInt(form.age) : null,
       gender: form.gender || null,
       state: form.state || null,
       occupation: form.occupation || null,
-      is_primary: members.length === 0,
     });
-    setSaving(false);
-    if (error) { toast.error(error.message); return; }
     toast.success(`${form.name} added`);
     setForm({ name: "", relation: "Spouse", age: "", gender: "", state: "", occupation: "" });
-    refresh();
-  }
-
-  async function remove(id: string) {
-    const { error } = await supabase.from("household_members").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Removed");
-    refresh();
   }
 
   return (
@@ -85,11 +50,8 @@ function HouseholdPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        {/* member grid */}
         <div className="space-y-4">
-          {loading ? (
-            <Card className="p-10 text-center text-sm text-muted-foreground">Loading…</Card>
-          ) : members.length === 0 ? (
+          {members.length === 0 ? (
             <Card className="p-10 text-center">
               <Users className="mx-auto h-10 w-10 text-muted-foreground/50" />
               <div className="mt-3 font-display text-xl font-semibold">No family members yet</div>
@@ -119,7 +81,7 @@ function HouseholdPage() {
                       {m.occupation && (<><dt className="text-muted-foreground">Work</dt><dd className="text-right">{m.occupation}</dd></>)}
                     </dl>
                     <div className="mt-4 flex justify-end">
-                      <Button variant="ghost" size="sm" onClick={() => remove(m.id)} className="text-muted-foreground hover:text-destructive">
+                      <Button variant="ghost" size="sm" onClick={() => removeMember(m.id)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -130,10 +92,9 @@ function HouseholdPage() {
           )}
         </div>
 
-        {/* add form */}
         <Card className="h-fit p-6">
           <div className="mb-4 flex items-center gap-2 font-display text-lg font-semibold"><Plus className="h-4 w-4" /> Add member</div>
-          <form onSubmit={addMember} className="space-y-3">
+          <form onSubmit={add} className="space-y-3">
             <div>
               <Label className="text-xs">Name</Label>
               <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Sita Devi" />
@@ -166,7 +127,7 @@ function HouseholdPage() {
               <Label className="text-xs">Occupation</Label>
               <Input value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} placeholder="Farmer / Homemaker / Student" />
             </div>
-            <Button type="submit" disabled={saving} className="w-full">{saving ? "Adding…" : "Add to household"}</Button>
+            <Button type="submit" className="w-full">Add to household</Button>
           </form>
         </Card>
       </div>
