@@ -90,6 +90,7 @@ export function MicTestDialog({
   const runTest = useCallback(async () => {
     reset();
     setStage("recording");
+    startedAtRef.current = Date.now();
     try {
       const { startWavRecording, bytesToBase64 } = await import("@/lib/audio/wav");
       const localLevels: number[] = [];
@@ -98,19 +99,17 @@ export function MicTestDialog({
         onLevel: (rms) => {
           setLevel(rms);
           localLevels.push(rms);
+          allLevelsRef.current.push(rms);
           if (localLevels.length > 60) localLevels.shift();
           setLevels([...localLevels]);
         },
-        onMaxReached: () => {
-          // finish naturally below
-        },
+        onMaxReached: () => {},
       });
       recRef.current = rec;
       timerRef.current = window.setInterval(() => {
         setElapsed(Math.floor(rec.elapsedMs()));
       }, 100);
 
-      // Hard stop at 2s
       await new Promise((r) => setTimeout(r, 2000));
       if (timerRef.current) {
         window.clearInterval(timerRef.current);
@@ -119,7 +118,24 @@ export function MicTestDialog({
       const blob = await rec.stop();
       recRef.current = null;
 
+      const all = allLevelsRef.current;
+      const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+      const peak = all.length ? Math.max(...all) : 0;
+      const durationMs = Date.now() - startedAtRef.current;
+
       if (blob.size < 2048) {
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "error",
+          error: "Recording was empty.",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
         setStage("error");
         setErrMsg("Recording was empty. Check your microphone and try again.");
         return;
@@ -141,21 +157,64 @@ export function MicTestDialog({
         error?: string;
       };
       if (data.ok && (data.transcript || data.translatedEnglish)) {
-        setTranscript(data.transcript || data.translatedEnglish || "");
+        const text = data.transcript || data.translatedEnglish || "";
+        setTranscript(text);
         setSource(data.source || "unknown");
         setStage("result");
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "result",
+          transcript: text,
+          source: data.source || "unknown",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
       } else {
         setStage("error");
         setErrMsg(data.error || "Transcription failed. Try again or use text input.");
         setSource(data.source || "");
+        const r: LastTestResult = {
+          at: Date.now(),
+          status: "error",
+          error: data.error || "Transcription failed.",
+          source: data.source || "",
+          lang,
+          durationMs,
+          avgLevel: avg,
+          peakLevel: peak,
+          sampleCount: all.length,
+        };
+        saveLastTest(r);
+        setLastTest(r);
       }
     } catch (err) {
-      setStage("error");
-      setErrMsg(
+      const durationMs = Date.now() - startedAtRef.current;
+      const all = allLevelsRef.current;
+      const avg = all.length ? all.reduce((a, b) => a + b, 0) / all.length : 0;
+      const peak = all.length ? Math.max(...all) : 0;
+      const msg =
         err instanceof Error && err.message.includes("Permission")
           ? "Microphone permission denied. Allow mic access in your browser settings."
-          : "Could not start the microphone. Is another app using it?",
-      );
+          : "Could not start the microphone. Is another app using it?";
+      setStage("error");
+      setErrMsg(msg);
+      const r: LastTestResult = {
+        at: Date.now(),
+        status: "error",
+        error: msg,
+        lang,
+        durationMs,
+        avgLevel: avg,
+        peakLevel: peak,
+        sampleCount: all.length,
+      };
+      saveLastTest(r);
+      setLastTest(r);
     }
   }, [lang, reset]);
 
