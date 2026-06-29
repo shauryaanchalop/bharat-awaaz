@@ -257,10 +257,12 @@ export function addMember(input: Omit<DemoMember, "id" | "created_at" | "user_id
 }
 
 export function removeMember(id: string) {
+  assertCapability("manage_household");
   mutateDemo((s) => ({ ...s, members: s.members.filter((m) => m.id !== id) }));
 }
 
 export function addGrievance(input: { subject: string; ministry: string; description: string }) {
+  assertCapability("create_grievance");
   mutateDemo((s) => {
     const g: DemoGrievance = {
       id: rid("g_"),
@@ -288,6 +290,7 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
 }
 
 export function removeGrievance(id: string) {
+  assertCapability("edit_own_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.filter((g) => g.id !== id),
@@ -296,6 +299,7 @@ export function removeGrievance(id: string) {
 }
 
 export function bumpPriority(id: string, delta: number) {
+  assertCapability("edit_own_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.map((g) => (g.id === id ? { ...g, priority: g.priority + delta } : g)),
