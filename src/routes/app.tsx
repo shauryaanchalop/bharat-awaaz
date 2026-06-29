@@ -1873,8 +1873,11 @@ function Composer({
     const utterance = window.prompt(
       "🎙 Mock voice mode\nType what the user would have said (in any language). The agent will treat this as the ASR transcript:",
     );
-    if (utterance && utterance.trim()) onSend(utterance.trim());
-  }, [onSend]);
+    if (utterance && utterance.trim()) {
+      setPending({ text: utterance.trim(), source: "mock" });
+      setStatus({ state: "ok", source: "mock", message: "Mock transcript ready — review and send." });
+    }
+  }, []);
 
   const stop = useCallback(async () => {
     if (finishingRef.current) return;
