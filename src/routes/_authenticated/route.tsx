@@ -68,7 +68,10 @@ function AuthedLayout() {
           })}
         </nav>
         <div className="p-3 border-t space-y-2">
-          <div className="px-3 py-2 text-xs text-muted-foreground truncate">{user?.email}</div>
+          <div className="flex items-center justify-between px-1">
+            <div className="px-2 py-1 text-xs text-muted-foreground truncate">{user?.email}</div>
+            <ThemeToggle />
+          </div>
           <Button variant="outline" size="sm" className="w-full" onClick={signOut}>
             <LogOut className="w-4 h-4 mr-2" /> Sign out
           </Button>
