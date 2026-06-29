@@ -2010,6 +2010,70 @@ function Composer({
     if (recording) stop();
   }, [mockVoice, recording, stop]);
 
+  // Cancel current recording without transcribing (Esc key).
+  const cancelRecording = useCallback(() => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    recorderRef.current = null;
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    liveRef.current?.stop();
+    liveRef.current = null;
+    try {
+      rec.cancel();
+    } catch {
+      /* ignore */
+    }
+    setRecording(false);
+    setLevel(0);
+    setPartial("");
+    setStatus({ state: "idle", message: "Recording cancelled." });
+  }, []);
+
+  // Keyboard controls: Space/Enter to hold-to-talk (PTT), Esc to cancel.
+  useEffect(() => {
+    const isTypingTarget = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t.isContentEditable
+      );
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && recording) {
+        e.preventDefault();
+        cancelRecording();
+        return;
+      }
+      if (!pttMode || mockVoice) return;
+      if (e.repeat) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        pttDown();
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!pttMode || mockVoice) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        pttUp();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [pttMode, mockVoice, recording, pttDown, pttUp, cancelRecording]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
