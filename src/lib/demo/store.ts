@@ -33,6 +33,9 @@ export type DemoMember = {
 
 export type ReviewDecision = "approved" | "rejected";
 
+export type PipelineStatus = "received" | "in_progress" | "resolved" | "closed";
+export const PIPELINE_STATUSES: PipelineStatus[] = ["received", "in_progress", "resolved", "closed"];
+
 export type DemoGrievance = {
   id: string;
   user_id: string;
@@ -52,6 +55,9 @@ export type DemoGrievance = {
   review_notes: string | null;
   reviewed_at: string | null;
   reviewer: string | null;
+  pipeline_status: PipelineStatus | null;
+  pipeline_updated_at: string | null;
+  pipeline_updated_by: string | null;
 };
 
 export type DemoTemplate = {
@@ -171,6 +177,9 @@ function seed(): DemoStore {
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: isSubmitted ? (idx % 3 === 0 ? "in_progress" : "received") : null,
+      pipeline_updated_at: isSubmitted ? days(Math.max(0, s.age - 1)) : null,
+      pipeline_updated_by: isSubmitted ? "System (auto)" : null,
     };
   });
 
@@ -283,6 +292,9 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: null,
+      pipeline_updated_at: null,
+      pipeline_updated_by: null,
     };
     const a: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "create", detail: "Manual draft", created_at: g.created_at };
     return { ...s, grievances: [g, ...s.grievances], audit: [a, ...s.audit] };
@@ -317,6 +329,9 @@ export function quickSubmitGrievance(input: { subject: string; ministry: string;
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: "received",
+      pipeline_updated_at: now,
+      pipeline_updated_by: "System (auto)",
     };
     created = g;
     const a1: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "create", detail: "One-click submit", created_at: now };
@@ -388,4 +403,49 @@ export function clearReview(id: string) {
       g.id === id ? { ...g, review_decision: null, review_notes: null, reviewed_at: null, reviewer: null } : g
     ),
   }));
+}
+
+const PIPELINE_LABEL: Record<PipelineStatus, string> = {
+  received: "Received",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+export function pipelineLabel(s: PipelineStatus | null | undefined): string {
+  return s ? PIPELINE_LABEL[s] : "—";
+}
+
+export function setPipelineStatus(id: string, next: PipelineStatus, note = "", reviewer = "Admin (demo)") {
+  assertCapability("review_grievance");
+  mutateDemo((s) => {
+    const g = s.grievances.find((x) => x.id === id);
+    if (!g) return s;
+    const prev = g.pipeline_status;
+    if (prev === next) return s;
+    const now = new Date().toISOString();
+    const updated: DemoGrievance = {
+      ...g,
+      pipeline_status: next,
+      pipeline_updated_at: now,
+      pipeline_updated_by: reviewer,
+    };
+    const detailBits = [
+      `${reviewer} moved ${prev ? PIPELINE_LABEL[prev] : "—"} → ${PIPELINE_LABEL[next]}`,
+    ];
+    if (note.trim()) detailBits.push(`"${note.trim()}"`);
+    const audit: DemoAudit = {
+      id: rid("a_"),
+      user_id: g.user_id,
+      grievance_id: g.id,
+      action: `pipeline_${next}`,
+      detail: detailBits.join(" — "),
+      created_at: now,
+    };
+    return {
+      ...s,
+      grievances: s.grievances.map((x) => (x.id === id ? updated : x)),
+      audit: [audit, ...s.audit],
+    };
+  });
 }

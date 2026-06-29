@@ -1,15 +1,34 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo, reviewGrievance, clearReview, type DemoGrievance } from "@/lib/demo/store";
+import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw, Inbox, Loader2, CheckCheck, Archive } from "lucide-react";
+import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
+
+const PIPELINE_META: Record<PipelineStatus, { icon: typeof Inbox; cls: string }> = {
+  received: { icon: Inbox, cls: "text-sky-600 border-sky-500/40 bg-sky-500/10" },
+  in_progress: { icon: Loader2, cls: "text-amber-600 border-amber-500/40 bg-amber-500/10" },
+  resolved: { icon: CheckCheck, cls: "text-emerald-600 border-emerald-500/40 bg-emerald-500/10" },
+  closed: { icon: Archive, cls: "text-muted-foreground border-border bg-muted" },
+};
+
+function PipelinePill({ status }: { status: PipelineStatus | null }) {
+  if (!status) return <span className="text-xs text-muted-foreground">—</span>;
+  const { icon: Icon, cls } = PIPELINE_META[status];
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${cls}`}>
+      <Icon className="w-3 h-3" /> {pipelineLabel(status)}
+    </span>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Admin — Bharat-Awaaz" }] }),
@@ -144,7 +163,7 @@ function AdminPage() {
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
+                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Pipeline</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
                 <tbody>
                   {visibleGrievances.map((g) => (
                     <tr key={g.id} className="border-t align-top">
@@ -155,6 +174,34 @@ function AdminPage() {
                       <td className="p-3 text-xs">{userById[g.user_id]?.display_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{g.ministry ?? "—"}</td>
                       <td className="p-3"><StatusBadge status={g.status} regId={g.registration_id} /></td>
+                      <td className="p-3 min-w-[180px]">
+                        {g.status === "submitted" ? (
+                          <div className="space-y-1.5">
+                            <PipelinePill status={g.pipeline_status} />
+                            <Select
+                              value={g.pipeline_status ?? undefined}
+                              onValueChange={(v) => {
+                                setPipelineStatus(g.id, v as PipelineStatus);
+                                toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Set status…" /></SelectTrigger>
+                              <SelectContent>
+                                {PIPELINE_STATUSES.map((s) => (
+                                  <SelectItem key={s} value={s} className="text-xs">{pipelineLabel(s)}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {g.pipeline_updated_at && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {g.pipeline_updated_by ?? "—"} · {new Date(g.pipeline_updated_at).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="p-3">
                         {g.review_decision === "approved" && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
                         {g.review_decision === "rejected" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>}
@@ -179,7 +226,7 @@ function AdminPage() {
                     </tr>
                   ))}
                   {visibleGrievances.length === 0 && (
-                    <tr><td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">No grievances match this filter.</td></tr>
+                    <tr><td colSpan={8} className="p-8 text-center text-sm text-muted-foreground">No grievances match this filter.</td></tr>
                   )}
                 </tbody>
               </table>
