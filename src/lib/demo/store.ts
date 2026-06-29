@@ -295,7 +295,7 @@ export function addGrievance(input: { subject: string; ministry: string; descrip
 export function quickSubmitGrievance(input: { subject: string; ministry: string; description: string; scheme?: string }) {
   assertCapability("create_grievance");
   let created: DemoGrievance | null = null;
-  mutateDemo((s) => {
+  mutateDemo((s): DemoStore => {
     const now = new Date().toISOString();
     const reg = `CPGRAMS/2026/${String(Math.floor(100000 + Math.random() * 899999))}`;
     const g: DemoGrievance = {
