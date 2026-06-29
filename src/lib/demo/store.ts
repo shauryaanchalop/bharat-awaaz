@@ -344,6 +344,7 @@ export function reviewGrievance(id: string, decision: ReviewDecision, notes: str
 }
 
 export function clearReview(id: string) {
+  assertCapability("review_grievance");
   mutateDemo((s) => ({
     ...s,
     grievances: s.grievances.map((g) =>
