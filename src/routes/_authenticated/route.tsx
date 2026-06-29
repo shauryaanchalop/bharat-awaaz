@@ -25,6 +25,7 @@ function AuthedLayout() {
   const nav = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/app", label: "Voice Agent", icon: Home },
+    { to: "/schemes", label: "Schemes", icon: Sparkles },
     { to: "/household", label: "My Family", icon: Users },
     { to: "/grievances", label: "Grievances", icon: MessageSquare },
     { to: "/impact", label: "Impact", icon: Map },
