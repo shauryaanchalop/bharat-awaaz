@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useAuth, useIsAdmin, useDemoRole } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map, UserCog } from "lucide-react";
+import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map, UserCog, Sparkles } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 

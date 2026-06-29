@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTemplatesRouteImport } from './routes/api/templates'
+import { Route as AuthenticatedSchemesRouteImport } from './routes/_authenticated/schemes'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedHouseholdRouteImport } from './routes/_authenticated/household'
 import { Route as AuthenticatedGrievancesRouteImport } from './routes/_authenticated/grievances'
@@ -62,6 +63,11 @@ const ApiTemplatesRoute = ApiTemplatesRouteImport.update({
   id: '/api/templates',
   path: '/api/templates',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSchemesRoute = AuthenticatedSchemesRouteImport.update({
+  id: '/schemes',
+  path: '/schemes',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/grievances': typeof AuthenticatedGrievancesRoute
   '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/schemes': typeof AuthenticatedSchemesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/grievances': typeof AuthenticatedGrievancesRoute
   '/household': typeof AuthenticatedHouseholdRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/schemes': typeof AuthenticatedSchemesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_authenticated/grievances': typeof AuthenticatedGrievancesRoute
   '/_authenticated/household': typeof AuthenticatedHouseholdRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/schemes': typeof AuthenticatedSchemesRoute
   '/api/templates': typeof ApiTemplatesRoute
   '/api/agent/resume': typeof ApiAgentResumeRoute
   '/api/agent/stream': typeof ApiAgentStreamRoute
@@ -199,6 +208,7 @@ export interface FileRouteTypes {
     | '/grievances'
     | '/household'
     | '/profile'
+    | '/schemes'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/grievances'
     | '/household'
     | '/profile'
+    | '/schemes'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/_authenticated/grievances'
     | '/_authenticated/household'
     | '/_authenticated/profile'
+    | '/_authenticated/schemes'
     | '/api/templates'
     | '/api/agent/resume'
     | '/api/agent/stream'
@@ -317,6 +329,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/templates'
       preLoaderRoute: typeof ApiTemplatesRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/schemes': {
+      id: '/_authenticated/schemes'
+      path: '/schemes'
+      fullPath: '/schemes'
+      preLoaderRoute: typeof AuthenticatedSchemesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
@@ -411,6 +430,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedGrievancesRoute: typeof AuthenticatedGrievancesRoute
   AuthenticatedHouseholdRoute: typeof AuthenticatedHouseholdRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedSchemesRoute: typeof AuthenticatedSchemesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -419,6 +439,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGrievancesRoute: AuthenticatedGrievancesRoute,
   AuthenticatedHouseholdRoute: AuthenticatedHouseholdRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedSchemesRoute: AuthenticatedSchemesRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
