@@ -559,6 +559,16 @@ function AppPage() {
           )}
           <DocumentUpload sessionId={sessionId} onUploaded={(d) => setDocs((x) => [...x, d])} />
           {docs.length > 0 && <DocsPanel docs={docs} />}
+          <SampleData
+            sessionId={sessionId}
+            templates={templates}
+            onSeeded={(seeded) =>
+              setDocs((x) => [
+                ...x,
+                ...seeded.map((d) => ({ id: d.id, kind: d.kind, fields: d.fields })),
+              ])
+            }
+          />
           <Tip text={t.sub} />
         </aside>
       </main>
