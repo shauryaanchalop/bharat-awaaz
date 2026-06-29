@@ -166,6 +166,10 @@ function seed(): DemoStore {
       last_error: s.status === "failed" ? "Upstream CPGRAMS returned 503 (gateway timeout)" : null,
       created_at: days(s.age),
       submitted_at: isSubmitted ? days(Math.max(0, s.age - 1)) : null,
+      review_decision: null,
+      review_notes: null,
+      reviewed_at: null,
+      reviewer: null,
     };
   });
 
