@@ -2256,6 +2256,9 @@ function SttStatusPanel({
   pttMode,
   onPttToggle,
   onMicTest,
+  canRetry,
+  lastSource,
+  onRetry,
 }: {
   status: SttStatus;
   recording: boolean;
@@ -2265,7 +2268,14 @@ function SttStatusPanel({
   pttMode: boolean;
   onPttToggle: () => void;
   onMicTest: () => void;
+  canRetry: boolean;
+  lastSource?: string;
+  onRetry: (prefer: "auto" | "bhashini" | "lovable-ai") => void | Promise<void>;
 }) {
+  // Suggest the opposite engine when the user retries after a result/error.
+  const otherEngine: "bhashini" | "lovable-ai" =
+    lastSource === "bhashini" ? "lovable-ai" : "bhashini";
+  const otherLabel = otherEngine === "bhashini" ? "Bhashini" : "Lovable AI";
   const sourceLabel =
     status.source === "bhashini"
       ? "Bhashini"
