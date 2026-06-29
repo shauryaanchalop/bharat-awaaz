@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth/hooks";
+import { useDemoStore, updateProfile } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,23 +15,16 @@ export const Route = createFileRoute("/_authenticated/profile")({
 
 function ProfilePage() {
   const { user } = useAuth();
-  const [profile, setProfile] = useState({ display_name: "", phone: "", locale: "en" });
-  const [busy, setBusy] = useState(false);
+  const store = useDemoStore();
+  const [form, setForm] = useState({ display_name: store.profile.display_name, phone: store.profile.phone ?? "", locale: store.profile.locale, state: store.profile.state });
 
   useEffect(() => {
-    if (!user) return;
-    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle().then(({ data }) => {
-      if (data) setProfile({ display_name: data.display_name ?? "", phone: data.phone ?? "", locale: data.locale ?? "en" });
-    });
-  }, [user]);
+    setForm({ display_name: store.profile.display_name, phone: store.profile.phone ?? "", locale: store.profile.locale, state: store.profile.state });
+  }, [store.profile]);
 
-  async function save() {
-    if (!user) return;
-    setBusy(true);
-    const { error } = await supabase.from("profiles").upsert({ id: user.id, ...profile });
-    setBusy(false);
-    if (error) toast.error(error.message);
-    else toast.success("Profile saved.");
+  function save() {
+    updateProfile(form);
+    toast.success("Profile saved.");
   }
 
   return (
@@ -39,14 +32,15 @@ function ProfilePage() {
       <div><h1 className="text-3xl font-bold">Profile</h1><p className="text-muted-foreground">Your personal details and preferences.</p></div>
       <Card className="p-6 space-y-4">
         <div className="space-y-1.5"><Label>Email</Label><Input value={user?.email ?? ""} disabled /></div>
-        <div className="space-y-1.5"><Label>Display name</Label><Input value={profile.display_name} onChange={(e) => setProfile((p) => ({ ...p, display_name: e.target.value }))} /></div>
-        <div className="space-y-1.5"><Label>Phone</Label><Input value={profile.phone} onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))} /></div>
+        <div className="space-y-1.5"><Label>Display name</Label><Input value={form.display_name} onChange={(e) => setForm((p) => ({ ...p, display_name: e.target.value }))} /></div>
+        <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} /></div>
+        <div className="space-y-1.5"><Label>State</Label><Input value={form.state} onChange={(e) => setForm((p) => ({ ...p, state: e.target.value }))} /></div>
         <div className="space-y-1.5"><Label>Preferred language</Label>
-          <select className="w-full h-10 px-3 border rounded-md bg-background" value={profile.locale} onChange={(e) => setProfile((p) => ({ ...p, locale: e.target.value }))}>
+          <select className="w-full h-10 px-3 border rounded-md bg-background" value={form.locale} onChange={(e) => setForm((p) => ({ ...p, locale: e.target.value }))}>
             <option value="en">English</option><option value="hi">हिन्दी</option><option value="ta">தமிழ்</option><option value="te">తెలుగు</option><option value="bn">বাংলা</option><option value="mr">मराठी</option>
           </select>
         </div>
-        <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
+        <Button onClick={save}>Save changes</Button>
       </Card>
     </div>
   );
