@@ -2298,18 +2298,25 @@ function SttStatusPanel({
         <button
           type="button"
           onClick={onPttToggle}
+          aria-pressed={pttMode}
+          aria-label={
+            pttMode
+              ? "Push-to-talk on — hold Space, Enter, or the mic to record"
+              : "Push-to-talk off — tap the mic to toggle recording"
+          }
           className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
             pttMode
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
           }`}
-          title="Push-to-talk: hold the mic to record"
+          title="Push-to-talk: hold the mic (or Space/Enter) to record. Esc cancels."
         >
           {pttMode ? "PTT on" : "PTT off"}
         </button>
         <button
           type="button"
           onClick={onMicTest}
+          aria-label="Open microphone test"
           className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
         >
           Mic test
