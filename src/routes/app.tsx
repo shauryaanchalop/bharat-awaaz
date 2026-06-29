@@ -2234,7 +2234,12 @@ function SttStatusPanel({
             : "border-border bg-muted/40 text-muted-foreground";
 
   return (
-    <div className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs ${stateColor}`}>
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs ${stateColor}`}
+    >
       <div className="flex items-center gap-2 font-medium">
         {status.state === "recording" && <span>●</span>}
         {status.state === "transcribing" && <span>⏳</span>}
