@@ -20,8 +20,26 @@ function AdminPage() {
   const { user } = useAuth();
   const { isAdmin } = useIsAdmin(user?.id);
   const store = useDemoStore();
+  const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
+  const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
+
+  const reviewCounts = useMemo(() => {
+    const submitted = store.grievances.filter((g) => g.status === "submitted");
+    return {
+      pending: submitted.filter((g) => !g.review_decision).length,
+      approved: store.grievances.filter((g) => g.review_decision === "approved").length,
+      rejected: store.grievances.filter((g) => g.review_decision === "rejected").length,
+    };
+  }, [store.grievances]);
+
+  const visibleGrievances = useMemo(() => {
+    if (grievanceFilter === "pending_review") return store.grievances.filter((g) => g.status === "submitted" && !g.review_decision);
+    if (grievanceFilter === "approved") return store.grievances.filter((g) => g.review_decision === "approved");
+    if (grievanceFilter === "rejected") return store.grievances.filter((g) => g.review_decision === "rejected");
+    return store.grievances;
+  }, [store.grievances, grievanceFilter]);
 
   if (!isAdmin) {
     return (
