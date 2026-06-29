@@ -253,6 +253,65 @@ function AdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ReviewDialog target={reviewTarget} onClose={() => setReviewTarget(null)} citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined} />
     </div>
+  );
+}
+
+function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance | null; onClose: () => void; citizenName?: string }) {
+  const [notes, setNotes] = useState("");
+  const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
+
+  // reset state whenever a new target is opened
+  useMemo(() => {
+    setNotes(target?.review_notes ?? "");
+    setDecision(target?.review_decision ?? null);
+  }, [target?.id]);
+
+  const submit = (d: "approved" | "rejected") => {
+    if (!target) return;
+    if (d === "rejected" && !notes.trim()) {
+      setDecision("rejected");
+      return;
+    }
+    reviewGrievance(target.id, d, notes);
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Review application</DialogTitle>
+          <DialogDescription className="text-xs">
+            {target?.scheme && <span className="font-medium">{target.scheme}</span>}
+            {citizenName && <> · {citizenName}</>}
+            {target?.registration_id && <> · {target.registration_id}</>}
+          </DialogDescription>
+        </DialogHeader>
+        {target && (
+          <div className="space-y-3">
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <div className="font-medium">{target.subject}</div>
+              {target.description && <div className="text-xs text-muted-foreground mt-1">{target.description}</div>}
+            </div>
+            <div>
+              <label className="text-xs font-medium">Reviewer notes {decision === "rejected" && <span className="text-red-500">(required to reject)</span>}</label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add justification, missing documents, follow-up actions…" rows={4} />
+            </div>
+          </div>
+        )}
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" onClick={() => submit("rejected")} disabled={!notes.trim()}>
+            <XCircle className="w-4 h-4 mr-1" /> Reject
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-600/90 text-white" onClick={() => submit("approved")}>
+            <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
