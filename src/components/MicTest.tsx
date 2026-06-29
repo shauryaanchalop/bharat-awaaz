@@ -2,6 +2,46 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type Stage = "idle" | "recording" | "transcribing" | "result" | "error";
 
+export type LastTestResult = {
+  at: number;
+  status: "result" | "error";
+  transcript?: string;
+  source?: string;
+  error?: string;
+  lang: string;
+  durationMs: number;
+  avgLevel: number;
+  peakLevel: number;
+  sampleCount: number;
+};
+
+const LAST_TEST_KEY = "bharat_awaaz_last_mic_test";
+
+export function loadLastMicTest(): LastTestResult | null {
+  try {
+    const raw = localStorage.getItem(LAST_TEST_KEY);
+    return raw ? (JSON.parse(raw) as LastTestResult) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastTest(r: LastTestResult) {
+  try {
+    localStorage.setItem(LAST_TEST_KEY, JSON.stringify(r));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+export function clearLastMicTest() {
+  try {
+    localStorage.removeItem(LAST_TEST_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function MicTestDialog({
   open,
   onClose,
@@ -18,9 +58,12 @@ export function MicTestDialog({
   const [source, setSource] = useState<string>("");
   const [errMsg, setErrMsg] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [lastTest, setLastTest] = useState<LastTestResult | null>(null);
 
   const recRef = useRef<{ stop: () => Promise<Blob>; cancel: () => void } | null>(null);
   const timerRef = useRef<number | null>(null);
+  const allLevelsRef = useRef<number[]>([]);
+  const startedAtRef = useRef<number>(0);
 
   const reset = useCallback(() => {
     setStage("idle");
@@ -30,10 +73,13 @@ export function MicTestDialog({
     setSource("");
     setErrMsg("");
     setElapsed(0);
+    allLevelsRef.current = [];
   }, []);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setLastTest(loadLastMicTest());
+    } else {
       recRef.current?.cancel();
       recRef.current = null;
       if (timerRef.current) window.clearInterval(timerRef.current);
