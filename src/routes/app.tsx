@@ -1858,6 +1858,7 @@ function Composer({
   const [pttMode, setPttMode] = useState(false);
   const [status, setStatus] = useState<SttStatus>({ state: "idle" });
   const [showMicTest, setShowMicTest] = useState(false);
+  const [pending, setPending] = useState<{ text: string; source?: string } | null>(null);
 
   const recorderRef = useRef<{
     stop: () => Promise<Blob>;
