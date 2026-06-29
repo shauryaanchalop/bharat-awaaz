@@ -489,7 +489,7 @@ function AppPage() {
                 {l.native} · {l.english}
               </option>
             ))}
-          </select>
+          <ThemeToggle />
         </div>
       </header>
 
