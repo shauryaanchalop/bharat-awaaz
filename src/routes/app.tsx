@@ -1868,6 +1868,9 @@ function Composer({
   const liveRef = useRef<{ stop: () => void } | null>(null);
   const timerRef = useRef<number | null>(null);
   const finishingRef = useRef(false);
+  // Cache the last recorded audio so users can retry transcription (or switch engine) without re-recording.
+  const lastAudioRef = useRef<{ b64: string; lang: string } | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
 
   const startMock = useCallback(() => {
     const utterance = window.prompt(
