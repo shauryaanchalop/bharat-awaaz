@@ -1,12 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo } from "@/lib/demo/store";
+import { useDemoStore, resetDemo, reviewGrievance, clearReview, type DemoGrievance } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Shield, RotateCcw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { StatusBadge } from "./dashboard";
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -18,8 +20,26 @@ function AdminPage() {
   const { user } = useAuth();
   const { isAdmin } = useIsAdmin(user?.id);
   const store = useDemoStore();
+  const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
+  const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
+
+  const reviewCounts = useMemo(() => {
+    const submitted = store.grievances.filter((g) => g.status === "submitted");
+    return {
+      pending: submitted.filter((g) => !g.review_decision).length,
+      approved: store.grievances.filter((g) => g.review_decision === "approved").length,
+      rejected: store.grievances.filter((g) => g.review_decision === "rejected").length,
+    };
+  }, [store.grievances]);
+
+  const visibleGrievances = useMemo(() => {
+    if (grievanceFilter === "pending_review") return store.grievances.filter((g) => g.status === "submitted" && !g.review_decision);
+    if (grievanceFilter === "approved") return store.grievances.filter((g) => g.review_decision === "approved");
+    if (grievanceFilter === "rejected") return store.grievances.filter((g) => g.review_decision === "rejected");
+    return store.grievances;
+  }, [store.grievances, grievanceFilter]);
 
   if (!isAdmin) {
     return (
@@ -61,6 +81,21 @@ function AdminPage() {
         <Card className="p-5"><div className="text-sm text-muted-foreground">Audit events</div><div className="text-3xl font-bold tabular-nums">{store.audit.length}</div></Card>
       </div>
 
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-5 cursor-pointer hover:border-primary/60 transition" onClick={() => setGrievanceFilter("pending_review")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Awaiting review</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.pending}</div>
+        </Card>
+        <Card className="p-5 cursor-pointer hover:border-emerald-500/60 transition" onClick={() => setGrievanceFilter("approved")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Approved</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.approved}</div>
+        </Card>
+        <Card className="p-5 cursor-pointer hover:border-red-500/60 transition" onClick={() => setGrievanceFilter("rejected")}>
+          <div className="text-sm text-muted-foreground flex items-center gap-2"><XCircle className="w-4 h-4 text-red-500" /> Rejected</div>
+          <div className="text-3xl font-bold tabular-nums">{reviewCounts.rejected}</div>
+        </Card>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-5">
           <div className="text-sm font-semibold mb-3">Pipeline by status</div>
@@ -98,22 +133,54 @@ function AdminPage() {
           <TabsTrigger value="audit">Audit log</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="grievances">
+        <TabsContent value="grievances" className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["all", "pending_review", "approved", "rejected"] as const).map((f) => (
+              <Button key={f} size="sm" variant={grievanceFilter === f ? "default" : "outline"} onClick={() => setGrievanceFilter(f)}>
+                {f === "all" ? "All" : f === "pending_review" ? `Awaiting review (${reviewCounts.pending})` : f === "approved" ? `Approved (${reviewCounts.approved})` : `Rejected (${reviewCounts.rejected})`}
+              </Button>
+            ))}
+          </div>
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">State</th><th className="p-3">Status</th><th className="p-3">Created</th></tr></thead>
+                <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
                 <tbody>
-                  {store.grievances.map((g) => (
-                    <tr key={g.id} className="border-t">
-                      <td className="p-3 font-medium max-w-sm truncate">{g.subject}</td>
+                  {visibleGrievances.map((g) => (
+                    <tr key={g.id} className="border-t align-top">
+                      <td className="p-3 font-medium max-w-sm">
+                        <div className="truncate">{g.subject}</div>
+                        {g.review_notes && <div className="text-xs text-muted-foreground mt-1 italic">"{g.review_notes}"</div>}
+                      </td>
                       <td className="p-3 text-xs">{userById[g.user_id]?.display_name ?? "—"}</td>
                       <td className="p-3 text-xs text-muted-foreground">{g.ministry ?? "—"}</td>
-                      <td className="p-3 text-xs">{g.state ?? "—"}</td>
                       <td className="p-3"><StatusBadge status={g.status} regId={g.registration_id} /></td>
+                      <td className="p-3">
+                        {g.review_decision === "approved" && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
+                        {g.review_decision === "rejected" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>}
+                        {!g.review_decision && (g.status === "submitted" ? <Badge variant="outline">Pending</Badge> : <span className="text-xs text-muted-foreground">—</span>)}
+                        {g.reviewed_at && <div className="text-[10px] text-muted-foreground mt-1">{new Date(g.reviewed_at).toLocaleString()}</div>}
+                      </td>
                       <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(g.created_at).toLocaleDateString()}</td>
+                      <td className="p-3 text-right whitespace-nowrap">
+                        {g.status === "submitted" ? (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => setReviewTarget(g)}>
+                              {g.review_decision ? "Edit review" : "Review"}
+                            </Button>
+                            {g.review_decision && (
+                              <Button size="sm" variant="ghost" className="ml-1 text-xs" onClick={() => clearReview(g.id)}>Reset</Button>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Not submitted</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
+                  {visibleGrievances.length === 0 && (
+                    <tr><td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">No grievances match this filter.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -186,6 +253,65 @@ function AdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <ReviewDialog target={reviewTarget} onClose={() => setReviewTarget(null)} citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined} />
     </div>
+  );
+}
+
+function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance | null; onClose: () => void; citizenName?: string }) {
+  const [notes, setNotes] = useState("");
+  const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
+
+  // reset state whenever a new target is opened
+  useEffect(() => {
+    setNotes(target?.review_notes ?? "");
+    setDecision(target?.review_decision ?? null);
+  }, [target?.id, target?.review_notes, target?.review_decision]);
+
+  const submit = (d: "approved" | "rejected") => {
+    if (!target) return;
+    if (d === "rejected" && !notes.trim()) {
+      setDecision("rejected");
+      return;
+    }
+    reviewGrievance(target.id, d, notes);
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Review application</DialogTitle>
+          <DialogDescription className="text-xs">
+            {target?.scheme && <span className="font-medium">{target.scheme}</span>}
+            {citizenName && <> · {citizenName}</>}
+            {target?.registration_id && <> · {target.registration_id}</>}
+          </DialogDescription>
+        </DialogHeader>
+        {target && (
+          <div className="space-y-3">
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <div className="font-medium">{target.subject}</div>
+              {target.description && <div className="text-xs text-muted-foreground mt-1">{target.description}</div>}
+            </div>
+            <div>
+              <label className="text-xs font-medium">Reviewer notes {decision === "rejected" && <span className="text-red-500">(required to reject)</span>}</label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add justification, missing documents, follow-up actions…" rows={4} />
+            </div>
+          </div>
+        )}
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="destructive" onClick={() => submit("rejected")} disabled={!notes.trim()}>
+            <XCircle className="w-4 h-4 mr-1" /> Reject
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-600/90 text-white" onClick={() => submit("approved")}>
+            <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
