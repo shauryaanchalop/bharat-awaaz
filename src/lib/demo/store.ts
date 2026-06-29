@@ -306,3 +306,40 @@ export function updateProfile(patch: Partial<Pick<DemoProfile, "display_name" | 
     profiles: s.profiles.map((p) => (p.id === DEMO_USER_ID ? { ...p, ...patch } : p)),
   }));
 }
+
+export function reviewGrievance(id: string, decision: ReviewDecision, notes: string, reviewer = "Admin (demo)") {
+  mutateDemo((s) => {
+    const g = s.grievances.find((x) => x.id === id);
+    if (!g) return s;
+    const now = new Date().toISOString();
+    const updated: DemoGrievance = {
+      ...g,
+      review_decision: decision,
+      review_notes: notes.trim() || null,
+      reviewed_at: now,
+      reviewer,
+    };
+    const audit: DemoAudit = {
+      id: rid("a_"),
+      user_id: g.user_id,
+      grievance_id: g.id,
+      action: decision === "approved" ? "admin_approved" : "admin_rejected",
+      detail: notes.trim() ? `${reviewer}: ${notes.trim()}` : `${reviewer} marked ${decision}`,
+      created_at: now,
+    };
+    return {
+      ...s,
+      grievances: s.grievances.map((x) => (x.id === id ? updated : x)),
+      audit: [audit, ...s.audit],
+    };
+  });
+}
+
+export function clearReview(id: string) {
+  mutateDemo((s) => ({
+    ...s,
+    grievances: s.grievances.map((g) =>
+      g.id === id ? { ...g, review_decision: null, review_notes: null, reviewed_at: null, reviewer: null } : g
+    ),
+  }));
+}
