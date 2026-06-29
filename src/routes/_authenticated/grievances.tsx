@@ -18,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/grievances")({
 });
 
 function GrievancesPage() {
+  useRoleGuard("user");
   const store = useDemoStore();
   const items = store.grievances.filter((g) => g.user_id === DEMO_USER_ID);
   const [open, setOpen] = useState(false);
