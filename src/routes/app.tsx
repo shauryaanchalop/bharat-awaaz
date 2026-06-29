@@ -456,6 +456,7 @@ function AppPage() {
 
       <header className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4">
         <div className="flex items-center gap-3">
+          <BackButton to="/" label="Home" />
           <div className="font-display text-xl font-bold">भारत-आवाज़</div>
           <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent-foreground">
             agent live
