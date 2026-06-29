@@ -4,6 +4,7 @@ import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
