@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useDemoStore, DEMO_USER_ID, addGrievance, removeGrievance, bumpPriority } from "@/lib/demo/store";
+import { useDemoStore, DEMO_USER_ID, addGrievance, removeGrievance, bumpPriority, quickSubmitGrievance } from "@/lib/demo/store";
 import { useRoleGuard } from "@/lib/auth/hooks";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Zap } from "lucide-react";
 import { StatusBadge } from "./dashboard";
+
+const QUICK_PRESETS: Array<{ subject: string; ministry: string; scheme: string; description: string }> = [
+  {
+    subject: "PM-KISAN installment not credited despite valid eKYC",
+    ministry: "Agriculture & Farmers Welfare",
+    scheme: "PM-KISAN",
+    description: "Beneficiary ID active since 2020. Last credit received earlier this year. eKYC re-verified at CSC. Requesting release of the pending installment.",
+  },
+  {
+    subject: "Ujjwala refill subsidy reversed without notice",
+    ministry: "Petroleum & Natural Gas",
+    scheme: "PMUY",
+    description: "Subsidy of Rs 300 not credited for last 3 cylinder refills. Bank account is Aadhaar-seeded and active. Requesting reconciliation.",
+  },
+  {
+    subject: "Ration card e-KYC failing on FPS POS device",
+    ministry: "Food & Public Distribution",
+    scheme: "NFSA",
+    description: "Fingerprint biometric mismatch for an elderly member of the household. OTP fallback is disabled at the Fair Price Shop. Requesting alternative verification.",
+  },
+  {
+    subject: "PMAY-Gramin first instalment pending for 7 months",
+    ministry: "Rural Development",
+    scheme: "PMAY-G",
+    description: "House sanctioned in cycle 2024-25. Foundation cast and geo-tag uploaded. First instalment not released despite multiple block-office visits.",
+  },
+];
+
 
 export const Route = createFileRoute("/_authenticated/grievances")({
   head: () => ({ meta: [{ title: "My Grievances — Bharat-Awaaz" }] }),
