@@ -329,6 +329,9 @@ export function quickSubmitGrievance(input: { subject: string; ministry: string;
       review_notes: null,
       reviewed_at: null,
       reviewer: null,
+      pipeline_status: "received",
+      pipeline_updated_at: now,
+      pipeline_updated_by: "System (auto)",
     };
     created = g;
     const a1: DemoAudit = { id: rid("a_"), user_id: DEMO_USER_ID, grievance_id: g.id, action: "create", detail: "One-click submit", created_at: now };
