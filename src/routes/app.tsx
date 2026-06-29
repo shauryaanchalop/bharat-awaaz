@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { LANGUAGES, UI_STRINGS, type LangCode } from "@/lib/i18n/languages";
+import { MicTestDialog } from "@/components/MicTest";
 
 const searchSchema = z.object({ lang: z.string().optional() });
 
@@ -1826,6 +1827,12 @@ function Tip({ text }: { text: string }) {
   );
 }
 
+type SttStatus = {
+  state: "idle" | "recording" | "transcribing" | "ok" | "error";
+  source?: string; // "bhashini" | "lovable-ai"
+  message?: string;
+};
+
 function Composer({
   lang,
   onSend,
@@ -1841,7 +1848,21 @@ function Composer({
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const recorderRef = useRef<{ stop: () => Promise<Blob>; cancel: () => void } | null>(null);
+  const [level, setLevel] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [partial, setPartial] = useState("");
+  const [pttMode, setPttMode] = useState(false);
+  const [status, setStatus] = useState<SttStatus>({ state: "idle" });
+  const [showMicTest, setShowMicTest] = useState(false);
+
+  const recorderRef = useRef<{
+    stop: () => Promise<Blob>;
+    cancel: () => void;
+    elapsedMs: () => number;
+  } | null>(null);
+  const liveRef = useRef<{ stop: () => void } | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const finishingRef = useRef(false);
 
   const startMock = useCallback(() => {
     const utterance = window.prompt(
@@ -1850,28 +1871,32 @@ function Composer({
     if (utterance && utterance.trim()) onSend(utterance.trim());
   }, [onSend]);
 
-  const startReal = useCallback(async () => {
-    try {
-      const { startWavRecording } = await import("@/lib/audio/wav");
-      const rec = await startWavRecording();
-      recorderRef.current = rec;
-      setRecording(true);
-    } catch (err) {
-      console.error(err);
-      alert("Microphone access denied or unavailable. Please allow mic permissions.");
-    }
-  }, []);
-
   const stop = useCallback(async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     const rec = recorderRef.current;
     recorderRef.current = null;
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    liveRef.current?.stop();
+    liveRef.current = null;
     setRecording(false);
-    if (!rec) return;
+    setLevel(0);
+    if (!rec) {
+      finishingRef.current = false;
+      return;
+    }
     setTranscribing(true);
+    setStatus({ state: "transcribing", message: "Sending audio to speech engine…" });
     try {
       const blob = await rec.stop();
       if (blob.size < 2048) {
-        alert("That recording was too short. Please try again.");
+        setStatus({
+          state: "error",
+          message: "Recording was too short or silent. Hold the button longer and speak clearly.",
+        });
         return;
       }
       const { bytesToBase64 } = await import("@/lib/audio/wav");
@@ -1890,22 +1915,103 @@ function Composer({
         error?: string;
       };
       if (data.ok && (data.translatedEnglish || data.transcript)) {
+        setStatus({
+          state: "ok",
+          source: data.source,
+          message: `Transcribed via ${data.source === "bhashini" ? "Bhashini" : "Lovable AI fallback"}.`,
+        });
         onSend(data.translatedEnglish || data.transcript);
       } else {
-        const fallback = window.prompt(
-          data.error ? `${data.error}\nType your message:` : "Type your message:",
-        );
-        if (fallback && fallback.trim()) onSend(fallback.trim());
+        setStatus({
+          state: "error",
+          source: data.source,
+          message:
+            data.error ||
+            "Speech recognition could not understand the audio. Try again, speak louder, or type instead.",
+        });
       }
     } catch (err) {
       console.error("[mic] transcription failed", err);
-      const fallback = window.prompt("Transcription failed. Type your message:");
-      if (fallback && fallback.trim()) onSend(fallback.trim());
+      setStatus({
+        state: "error",
+        message:
+          err instanceof Error
+            ? `Transcription failed: ${err.message}`
+            : "Transcription failed. Check your network and try again.",
+      });
     } finally {
       setTranscribing(false);
+      setPartial("");
+      finishingRef.current = false;
     }
   }, [lang, onSend]);
 
+  const startReal = useCallback(async () => {
+    if (recording) return;
+    setStatus({ state: "recording", message: "Listening…" });
+    setPartial("");
+    setElapsed(0);
+    try {
+      const { startWavRecording } = await import("@/lib/audio/wav");
+      const { startLiveTranscription } = await import("@/lib/audio/speech");
+
+      const rec = await startWavRecording({
+        onLevel: (rms) => setLevel(rms),
+        silenceMs: 1800,
+        onSilence: () => {
+          // Auto-stop after 1.8 s of silence following speech.
+          stop();
+        },
+        maxMs: 30_000,
+        onMaxReached: () => stop(),
+      });
+      recorderRef.current = rec;
+      timerRef.current = window.setInterval(() => {
+        setElapsed(rec.elapsedMs());
+      }, 100);
+
+      // Live partials (Chrome/Edge). Falls back silently.
+      liveRef.current = startLiveTranscription(
+        lang,
+        (txt) => setPartial(txt),
+        () => {
+          /* swallow Web Speech errors — server STT is authoritative */
+        },
+      );
+
+      setRecording(true);
+    } catch (err) {
+      console.error(err);
+      setStatus({
+        state: "error",
+        message:
+          err instanceof Error && /denied|Permission/i.test(err.message)
+            ? "Microphone permission was denied. Enable it in your browser site settings."
+            : "Could not access the microphone. Is another app using it?",
+      });
+    }
+  }, [lang, recording, stop]);
+
+  // Push-to-talk handlers
+  const pttDown = useCallback(() => {
+    if (mockVoice) return;
+    if (!recording && !transcribing) startReal();
+  }, [mockVoice, recording, transcribing, startReal]);
+  const pttUp = useCallback(() => {
+    if (mockVoice) return;
+    if (recording) stop();
+  }, [mockVoice, recording, stop]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.cancel();
+      liveRef.current?.stop();
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const onTap = mockVoice ? startMock : recording ? stop : startReal;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1915,42 +2021,195 @@ function Composer({
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+    <>
+      <MicTestDialog open={showMicTest} onClose={() => setShowMicTest(false)} lang={lang} />
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 pt-2">
+          <SttStatusPanel
+            status={status}
+            recording={recording}
+            elapsedMs={elapsed}
+            level={level}
+            partial={partial}
+            pttMode={pttMode}
+            onPttToggle={() => setPttMode((v) => !v)}
+            onMicTest={() => setShowMicTest(true)}
+          />
+        </div>
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <button
+            type="button"
+            // In PTT mode, hold to talk; otherwise tap to toggle.
+            onClick={pttMode ? undefined : onTap}
+            onPointerDown={pttMode ? pttDown : undefined}
+            onPointerUp={pttMode ? pttUp : undefined}
+            onPointerLeave={pttMode && recording ? pttUp : undefined}
+            disabled={disabled || transcribing}
+            className={`relative flex h-14 w-14 shrink-0 select-none items-center justify-center rounded-full text-2xl shadow-lg transition disabled:opacity-50 ${
+              recording ? "bg-destructive text-destructive-foreground pulse-ring" : "bg-primary text-primary-foreground"
+            }`}
+            aria-label={
+              mockVoice
+                ? "Mock voice input"
+                : pttMode
+                  ? "Hold to talk"
+                  : recording
+                    ? "Stop recording"
+                    : "Start recording"
+            }
+            title={
+              mockVoice
+                ? "Mock voice (typed simulation)"
+                : pttMode
+                  ? "Push-to-talk (hold)"
+                  : "Tap to talk"
+            }
+          >
+            {mockVoice ? "💬" : transcribing ? "⏳" : recording ? "■" : "🎙"}
+          </button>
+          <form onSubmit={submit} className="flex flex-1 items-center gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                mockVoice
+                  ? "Mock voice on — tap 💬 to simulate, or type here"
+                  : recording
+                    ? partial || "Listening…"
+                    : pttMode
+                      ? "Hold the mic to talk, or type"
+                      : "Type or tap the mic"
+              }
+              disabled={recording}
+              className="flex-1 rounded-full border border-input bg-card px-5 py-3 text-base outline-none focus:border-primary"
+            />
+            <button
+              type="submit"
+              disabled={disabled || !text.trim()}
+              className="rounded-full bg-primary px-5 py-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SttStatusPanel({
+  status,
+  recording,
+  elapsedMs,
+  level,
+  partial,
+  pttMode,
+  onPttToggle,
+  onMicTest,
+}: {
+  status: SttStatus;
+  recording: boolean;
+  elapsedMs: number;
+  level: number;
+  partial: string;
+  pttMode: boolean;
+  onPttToggle: () => void;
+  onMicTest: () => void;
+}) {
+  const sourceLabel =
+    status.source === "bhashini"
+      ? "Bhashini"
+      : status.source === "lovable-ai"
+        ? "Lovable AI fallback"
+        : null;
+
+  const stateColor =
+    status.state === "ok"
+      ? "border-[var(--india-green)]/30 bg-[var(--india-green)]/10 text-[var(--india-green)]"
+      : status.state === "error"
+        ? "border-destructive/30 bg-destructive/10 text-destructive"
+        : status.state === "recording"
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
+          : status.state === "transcribing"
+            ? "border-primary/30 bg-primary/10 text-primary"
+            : "border-border bg-muted/40 text-muted-foreground";
+
+  return (
+    <div className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-xs ${stateColor}`}>
+      <div className="flex items-center gap-2 font-medium">
+        {status.state === "recording" && <span>●</span>}
+        {status.state === "transcribing" && <span>⏳</span>}
+        {status.state === "ok" && <span>✓</span>}
+        {status.state === "error" && <span>⚠</span>}
+        {status.state === "idle" && <span>🎙</span>}
+        <span>
+          {status.state === "idle"
+            ? "Mic ready"
+            : status.state === "recording"
+              ? "Listening"
+              : status.state === "transcribing"
+                ? "Transcribing"
+                : status.state === "ok"
+                  ? "Heard you"
+                  : "Mic error"}
+        </span>
+        {sourceLabel && (
+          <span className="ml-1 rounded-full bg-background/60 px-2 py-0.5 font-normal">
+            via {sourceLabel}
+          </span>
+        )}
+      </div>
+
+      {recording && (
+        <>
+          <div className="flex items-center gap-2 text-foreground/80">
+            <span className="tabular-nums">{(elapsedMs / 1000).toFixed(1)}s</span>
+            <div className="flex h-3 w-24 items-end gap-px overflow-hidden rounded-sm bg-background/60">
+              {Array.from({ length: 12 }).map((_, i) => {
+                const threshold = (i + 1) / 12;
+                const active = level >= threshold * 0.6;
+                return (
+                  <div
+                    key={i}
+                    className={`flex-1 ${active ? "bg-destructive" : "bg-muted-foreground/20"}`}
+                    style={{ height: `${20 + threshold * 80}%` }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+          {partial && (
+            <div className="basis-full truncate text-foreground/90">
+              <em>{partial}</em>
+            </div>
+          )}
+        </>
+      )}
+
+      {!recording && status.message && (
+        <div className="basis-full text-foreground/80">{status.message}</div>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
-          onClick={mockVoice ? startMock : recording ? stop : startReal}
-          disabled={disabled || transcribing}
-          className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-2xl shadow-lg transition disabled:opacity-50 ${
-            recording ? "bg-destructive text-destructive-foreground pulse-ring" : "bg-primary text-primary-foreground"
+          onClick={onPttToggle}
+          className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+            pttMode
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-background/60 text-muted-foreground hover:text-foreground"
           }`}
-          aria-label={mockVoice ? "Mock voice input" : recording ? "Stop recording" : "Start recording"}
-          title={mockVoice ? "Mock voice (typed simulation)" : "Real microphone"}
+          title="Push-to-talk: hold the mic to record"
         >
-          {mockVoice ? "💬" : transcribing ? "⏳" : recording ? "■" : "🎙"}
+          {pttMode ? "PTT on" : "PTT off"}
         </button>
-        <form onSubmit={submit} className="flex flex-1 items-center gap-2">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              mockVoice
-                ? "Mock voice on — tap 💬 to simulate, or type here"
-                : recording
-                  ? "Listening…"
-                  : "Type or tap the mic"
-            }
-            disabled={recording}
-            className="flex-1 rounded-full border border-input bg-card px-5 py-3 text-base outline-none focus:border-primary"
-          />
-          <button
-            type="submit"
-            disabled={disabled || !text.trim()}
-            className="rounded-full bg-primary px-5 py-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
-            Send
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={onMicTest}
+          className="rounded-full border border-border bg-background/60 px-2.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          Mic test
+        </button>
       </div>
     </div>
   );
