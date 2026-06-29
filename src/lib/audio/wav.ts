@@ -1,12 +1,44 @@
 // Record mic audio as 16 kHz mono WAV — the format Bhashini ASR and
 // OpenAI transcribe both accept reliably across Chrome, Firefox, and Safari.
+// Also exposes live level (RMS 0-1) for waveform meters and optional auto-stop
+// on silence for hands-free / push-to-talk reliability.
 
 export type WavRecorder = {
   stop: () => Promise<Blob>;
   cancel: () => void;
+  /** Seconds since recording started (live, monotonic). */
+  elapsedMs: () => number;
 };
 
-export async function startWavRecording(): Promise<WavRecorder> {
+export type WavRecorderOptions = {
+  /** Fires ~20×/sec with RMS amplitude in [0, 1]. Use for waveform/level meter. */
+  onLevel?: (rms: number) => void;
+  /** Fires once when 'silenceMs' ms of continuous near-silence is detected after
+   *  the user has actually spoken (rms crossed 'speechThreshold' at least once). */
+  onSilence?: () => void;
+  /** RMS below which a frame counts as silence. Default 0.015. */
+  silenceThreshold?: number;
+  /** RMS above which we consider the user has started speaking. Default 0.04. */
+  speechThreshold?: number;
+  /** Continuous silence (ms) after speech that triggers onSilence. Default 1500. */
+  silenceMs?: number;
+  /** Hard max recording length (ms). Default 30_000. */
+  maxMs?: number;
+  /** Fires when maxMs reached. */
+  onMaxReached?: () => void;
+};
+
+export async function startWavRecording(opts: WavRecorderOptions = {}): Promise<WavRecorder> {
+  const {
+    onLevel,
+    onSilence,
+    silenceThreshold = 0.015,
+    speechThreshold = 0.04,
+    silenceMs = 1500,
+    maxMs = 30_000,
+    onMaxReached,
+  } = opts;
+
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
@@ -18,8 +50,46 @@ export async function startWavRecording(): Promise<WavRecorder> {
   // ScriptProcessor is deprecated but works in every browser including iOS Safari.
   const node = ctx.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
+
+  const startTs = performance.now();
+  let hasSpoken = false;
+  let silenceSince = 0;
+  let firedSilence = false;
+  let firedMax = false;
+
   node.onaudioprocess = (e) => {
-    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    const data = e.inputBuffer.getChannelData(0);
+    chunks.push(new Float32Array(data));
+
+    // RMS
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    const rms = Math.sqrt(sum / data.length);
+    if (onLevel) {
+      try { onLevel(Math.min(1, rms * 4)); } catch { /* ignore */ }
+    }
+
+    const now = performance.now();
+    if (rms >= speechThreshold) {
+      hasSpoken = true;
+      silenceSince = now;
+    } else if (rms < silenceThreshold) {
+      if (!silenceSince) silenceSince = now;
+      if (
+        hasSpoken &&
+        !firedSilence &&
+        onSilence &&
+        now - silenceSince >= silenceMs
+      ) {
+        firedSilence = true;
+        try { onSilence(); } catch { /* ignore */ }
+      }
+    }
+
+    if (!firedMax && now - startTs >= maxMs) {
+      firedMax = true;
+      try { onMaxReached?.(); } catch { /* ignore */ }
+    }
   };
   source.connect(node);
   node.connect(ctx.destination);
@@ -31,6 +101,7 @@ export async function startWavRecording(): Promise<WavRecorder> {
   };
 
   return {
+    elapsedMs: () => performance.now() - startTs,
     cancel: () => {
       cleanup();
       ctx.close().catch(() => {});
