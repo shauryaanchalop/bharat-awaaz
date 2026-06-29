@@ -107,6 +107,32 @@ function GrievancesPage() {
         </Dialog>
       </div>
 
+      <Card className="p-5 border-primary/30 bg-primary/5">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-md bg-primary/10 text-primary"><Zap className="w-5 h-5" /></div>
+          <div>
+            <h2 className="font-semibold">One-click submit</h2>
+            <p className="text-sm text-muted-foreground">Pick a common grievance template — it's created, signed off, and dropped into the Admin pipeline instantly.</p>
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {QUICK_PRESETS.map((p) => (
+            <button
+              key={p.subject}
+              onClick={() => quickSubmit(p)}
+              className="text-left p-3 rounded-lg border bg-background hover:border-primary hover:shadow-sm transition group"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-medium text-primary">{p.scheme}</span>
+                <span className="text-xs text-muted-foreground group-hover:text-primary">Submit →</span>
+              </div>
+              <div className="text-sm font-medium line-clamp-2">{p.subject}</div>
+              <div className="text-xs text-muted-foreground mt-1">{p.ministry}</div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
       {items.length === 0 ? (
         <Card className="p-12 text-center text-muted-foreground">
           No grievances yet. Use the voice agent or click "New grievance".
