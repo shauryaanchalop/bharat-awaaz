@@ -1,30 +1,25 @@
-import { createFileRoute, Outlet, redirect, Link, useRouter, useRouterState } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
+import { createFileRoute, Outlet, Link, useRouter, useRouterState } from "@tanstack/react-router";
+import { useAuth, useIsAdmin, useDemoRole } from "@/lib/auth/hooks";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map } from "lucide-react";
+import { LayoutDashboard, Shield, User, LogOut, Home, MessageSquare, Users, Map, UserCog } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
-  },
+  // Demo mode: no auth gate. Anyone can explore both user and admin panels.
   component: AuthedLayout,
 });
 
 function AuthedLayout() {
   const { user } = useAuth();
   const { isAdmin } = useIsAdmin(user?.id);
+  const [role, setRole] = useDemoRole();
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    router.navigate({ to: "/auth", replace: true });
+  function exitDemo() {
+    router.navigate({ to: "/", replace: true });
   }
 
   const nav = [
@@ -45,7 +40,7 @@ function AuthedLayout() {
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500 to-green-600 flex items-center justify-center text-white font-bold">भ</div>
             <div>
               <div className="font-bold">Bharat-Awaaz</div>
-              <div className="text-xs text-muted-foreground">Citizen Console</div>
+              <div className="text-xs text-muted-foreground">Demo Console</div>
             </div>
           </Link>
         </div>
@@ -67,13 +62,32 @@ function AuthedLayout() {
             );
           })}
         </nav>
-        <div className="p-3 border-t space-y-2">
+        <div className="p-3 border-t space-y-3">
+          <div className="rounded-md border bg-muted/40 p-2">
+            <div className="flex items-center gap-1.5 px-1 pb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <UserCog className="w-3 h-3" /> Demo role
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                onClick={() => setRole("user")}
+                className={`rounded px-2 py-1 text-xs font-medium transition ${role === "user" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+              >
+                Citizen
+              </button>
+              <button
+                onClick={() => setRole("admin")}
+                className={`rounded px-2 py-1 text-xs font-medium transition ${role === "admin" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+              >
+                Admin
+              </button>
+            </div>
+          </div>
           <div className="flex items-center justify-between px-1">
-            <div className="px-2 py-1 text-xs text-muted-foreground truncate">{user?.email}</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground truncate">Demo · {role}</div>
             <ThemeToggle />
           </div>
-          <Button variant="outline" size="sm" className="w-full" onClick={signOut}>
-            <LogOut className="w-4 h-4 mr-2" /> Sign out
+          <Button variant="outline" size="sm" className="w-full" onClick={exitDemo}>
+            <LogOut className="w-4 h-4 mr-2" /> Exit demo
           </Button>
         </div>
       </aside>
@@ -82,8 +96,17 @@ function AuthedLayout() {
         <header className="md:hidden flex items-center justify-between p-3 border-b bg-card">
           <Link to="/dashboard" className="font-bold">भारत-आवाज़</Link>
           <div className="flex items-center gap-2">
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as "user" | "admin")}
+              className="text-xs rounded border bg-background px-2 py-1"
+              aria-label="Demo role"
+            >
+              <option value="user">Citizen</option>
+              <option value="admin">Admin</option>
+            </select>
             <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="sm" onClick={exitDemo}><LogOut className="w-4 h-4" /></Button>
           </div>
         </header>
         <nav className="md:hidden flex overflow-x-auto border-b bg-card">
