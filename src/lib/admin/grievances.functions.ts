@@ -51,7 +51,7 @@ export const setGrievancePipeline = createServerFn({ method: "POST" })
       _grievance_id: data.grievanceId,
       _next: data.next,
       _note: data.note ?? "",
-      _reviewer: data.reviewer ?? null,
+      _reviewer: data.reviewer ?? undefined,
     });
     if (error) throw new Error(error.message);
     return row as GrievanceRow;
@@ -81,7 +81,7 @@ export const reviewGrievanceServer = createServerFn({ method: "POST" })
       _grievance_id: data.grievanceId,
       _decision: data.decision,
       _notes: data.notes ?? "",
-      _reviewer: data.reviewer ?? null,
+      _reviewer: data.reviewer ?? undefined,
     });
     if (error) throw new Error(error.message);
     return row as GrievanceRow;
