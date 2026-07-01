@@ -58,6 +58,7 @@ function AdminPage() {
   const store = useDemoStore();
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
+  const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
 
@@ -164,7 +165,7 @@ function AdminPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="grievances">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
         <TabsList>
           <TabsTrigger value="grievances">Grievances</TabsTrigger>
           <TabsTrigger value="users">Citizens</TabsTrigger>
@@ -202,9 +203,13 @@ function AdminPage() {
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
                                 const next = v as PipelineStatus;
+                                const prev = g.pipeline_status;
                                 try {
                                   setPipelineStatus(g.id, next);
-                                  toast.success(`Marked ${pipelineLabel(next)}`, { description: g.subject.slice(0, 60) });
+                                  toast.success(`Marked ${pipelineLabel(next)}`, {
+                                    description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
+                                    action: { label: "View audit", onClick: () => setActiveTab("audit") },
+                                  });
                                   persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
                                     .catch(reportServerPersistError);
                                 } catch (err) {
@@ -326,22 +331,49 @@ function AdminPage() {
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left"><tr><th className="p-3">Action</th><th className="p-3">Detail</th><th className="p-3">Citizen</th><th className="p-3">Time</th></tr></thead>
+                <thead className="bg-muted text-left">
+                  <tr>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Change</th>
+                    <th className="p-3">Reviewer</th>
+                    <th className="p-3">Citizen</th>
+                    <th className="p-3">Note</th>
+                    <th className="p-3">Time</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {store.audit.slice(0, 100).map((a) => (
-                    <tr key={a.id} className="border-t">
-                      <td className="p-3 font-medium text-xs uppercase tracking-wider">{a.action}</td>
-                      <td className="p-3 text-xs">{a.detail}</td>
-                      <td className="p-3 text-xs text-muted-foreground">{userById[a.user_id]?.display_name ?? "—"}</td>
-                      <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {store.audit.slice(0, 100).map((a) => {
+                    const isPipeline = a.action.startsWith("pipeline_");
+                    const prev = a.meta?.prev_status ?? null;
+                    const next = a.meta?.next_status ?? null;
+                    return (
+                      <tr key={a.id} className="border-t align-top">
+                        <td className="p-3 font-medium text-xs uppercase tracking-wider whitespace-nowrap">{a.action}</td>
+                        <td className="p-3 text-xs">
+                          {isPipeline && next ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <PipelinePill status={prev} />
+                              <span className="text-muted-foreground">→</span>
+                              <PipelinePill status={next} />
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{a.detail}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-xs">{a.meta?.reviewer ?? (isPipeline ? "—" : "")}</td>
+                        <td className="p-3 text-xs text-muted-foreground">{userById[a.user_id]?.display_name ?? "—"}</td>
+                        <td className="p-3 text-xs text-muted-foreground italic max-w-xs truncate">{a.meta?.note ?? ""}</td>
+                        <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </Card>
         </TabsContent>
       </Tabs>
+
 
       <ReviewDialog
         target={reviewTarget}

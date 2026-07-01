@@ -71,6 +71,13 @@ export type DemoTemplate = {
   created_at: string;
 };
 
+export type DemoAuditMeta = {
+  prev_status?: PipelineStatus | null;
+  next_status?: PipelineStatus | null;
+  reviewer?: string;
+  note?: string;
+};
+
 export type DemoAudit = {
   id: string;
   user_id: string;
@@ -78,6 +85,7 @@ export type DemoAudit = {
   action: string;
   detail: string;
   created_at: string;
+  meta?: DemoAuditMeta;
 };
 
 export type DemoStore = {
@@ -475,6 +483,12 @@ export function setPipelineStatus(id: string, next: PipelineStatus, note = "", r
       action: `pipeline_${next}`,
       detail: detailBits.join(" — "),
       created_at: now,
+      meta: {
+        prev_status: prev,
+        next_status: next,
+        reviewer,
+        note: note.trim() || undefined,
+      },
     };
     return {
       ...s,
