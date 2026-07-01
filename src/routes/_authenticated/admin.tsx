@@ -165,7 +165,7 @@ function AdminPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="grievances">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
         <TabsList>
           <TabsTrigger value="grievances">Grievances</TabsTrigger>
           <TabsTrigger value="users">Citizens</TabsTrigger>
