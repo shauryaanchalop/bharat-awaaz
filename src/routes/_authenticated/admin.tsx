@@ -59,6 +59,11 @@ function AdminPage() {
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
   const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
+  const [flashIds, setFlashIds] = useState<Record<string, number>>({});
+  const flashRow = (id: string) => {
+    setFlashIds((m) => ({ ...m, [id]: Date.now() }));
+    window.setTimeout(() => setFlashIds((m) => { const n = { ...m }; delete n[id]; return n; }), 2200);
+  };
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
 
@@ -187,7 +192,10 @@ function AdminPage() {
                 <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Pipeline</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
                 <tbody>
                   {visibleGrievances.map((g) => (
-                    <tr key={g.id} className="border-t align-top">
+                    <tr
+                      key={g.id}
+                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""}`}
+                    >
                       <td className="p-3 font-medium max-w-sm">
                         <div className="truncate">{g.subject}</div>
                         {g.review_notes && <div className="text-xs text-muted-foreground mt-1 italic">"{g.review_notes}"</div>}
@@ -206,6 +214,7 @@ function AdminPage() {
                                 const prev = g.pipeline_status;
                                 try {
                                   setPipelineStatus(g.id, next);
+                                  flashRow(g.id);
                                   toast.success(`Marked ${pipelineLabel(next)}`, {
                                     description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
                                     action: { label: "View audit", onClick: () => setActiveTab("audit") },
