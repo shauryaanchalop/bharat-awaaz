@@ -343,12 +343,22 @@ function AdminPage() {
         </TabsContent>
       </Tabs>
 
-      <ReviewDialog target={reviewTarget} onClose={() => setReviewTarget(null)} citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined} />
+      <ReviewDialog
+        target={reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined}
+        persistReview={persistReview}
+      />
     </div>
   );
 }
 
-function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance | null; onClose: () => void; citizenName?: string }) {
+function ReviewDialog({ target, onClose, citizenName, persistReview }: {
+  target: DemoGrievance | null;
+  onClose: () => void;
+  citizenName?: string;
+  persistReview: (opts: { data: { grievanceId: string; decision: "approved" | "rejected"; notes?: string; reviewer?: string } }) => Promise<unknown>;
+}) {
   const [notes, setNotes] = useState("");
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
 
@@ -365,8 +375,11 @@ function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance 
       return;
     }
     reviewGrievance(target.id, d, notes);
+    persistReview({ data: { grievanceId: target.id, decision: d, notes, reviewer: "Admin (demo)" } })
+      .catch(reportServerPersistError);
     onClose();
   };
+
 
   return (
     <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
