@@ -214,6 +214,7 @@ function AdminPage() {
                                 const prev = g.pipeline_status;
                                 try {
                                   setPipelineStatus(g.id, next);
+                                  flashRow(g.id);
                                   toast.success(`Marked ${pipelineLabel(next)}`, {
                                     description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
                                     action: { label: "View audit", onClick: () => setActiveTab("audit") },
