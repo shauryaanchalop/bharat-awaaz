@@ -181,17 +181,35 @@ function AdminPage() {
                             <Select
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
-                                setPipelineStatus(g.id, v as PipelineStatus);
-                                toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                                try {
+                                  setPipelineStatus(g.id, v as PipelineStatus);
+                                  toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                                } catch (err) {
+                                  if (err instanceof PipelineTransitionError) {
+                                    toast.error("Invalid transition", { description: err.message });
+                                  } else {
+                                    toast.error("Update failed", { description: err instanceof Error ? err.message : String(err) });
+                                  }
+                                }
                               }}
                             >
                               <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Set status…" /></SelectTrigger>
                               <SelectContent>
-                                {PIPELINE_STATUSES.map((s) => (
-                                  <SelectItem key={s} value={s} className="text-xs">{pipelineLabel(s)}</SelectItem>
-                                ))}
+                                {(() => {
+                                  const allowed = new Set(allowedNextStatuses(g.pipeline_status));
+                                  return PIPELINE_STATUSES.map((s) => {
+                                    const isCurrent = s === g.pipeline_status;
+                                    const disabled = !isCurrent && !allowed.has(s);
+                                    return (
+                                      <SelectItem key={s} value={s} disabled={disabled} className="text-xs">
+                                        {pipelineLabel(s)}{disabled ? " (not allowed)" : ""}
+                                      </SelectItem>
+                                    );
+                                  });
+                                })()}
                               </SelectContent>
                             </Select>
+
                             {g.pipeline_updated_at && (
                               <div className="text-[10px] text-muted-foreground">
                                 {g.pipeline_updated_by ?? "—"} · {new Date(g.pipeline_updated_at).toLocaleString()}
