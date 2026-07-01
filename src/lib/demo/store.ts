@@ -416,13 +416,47 @@ export function pipelineLabel(s: PipelineStatus | null | undefined): string {
   return s ? PIPELINE_LABEL[s] : "—";
 }
 
+// Allowed forward transitions. `null` = no pipeline state yet (freshly
+// submitted). Terminal state `closed` has no outgoing moves. `resolved`
+// can be reopened back to `in_progress` if the citizen contests it.
+const PIPELINE_TRANSITIONS: Record<"null" | PipelineStatus, PipelineStatus[]> = {
+  null: ["received"],
+  received: ["in_progress"],
+  in_progress: ["resolved"],
+  resolved: ["closed", "in_progress"],
+  closed: [],
+};
+
+export function allowedNextStatuses(current: PipelineStatus | null): PipelineStatus[] {
+  return PIPELINE_TRANSITIONS[current ?? "null"];
+}
+
+export function canTransition(from: PipelineStatus | null, to: PipelineStatus): boolean {
+  return allowedNextStatuses(from).includes(to);
+}
+
+export class PipelineTransitionError extends Error {
+  constructor(public from: PipelineStatus | null, public to: PipelineStatus) {
+    super(
+      `Cannot move ${from ? PIPELINE_LABEL[from] : "—"} → ${PIPELINE_LABEL[to]}. ` +
+        `Allowed next: ${allowedNextStatuses(from).map((s) => PIPELINE_LABEL[s]).join(", ") || "none (terminal)"}.`,
+    );
+    this.name = "PipelineTransitionError";
+  }
+}
+
 export function setPipelineStatus(id: string, next: PipelineStatus, note = "", reviewer = "Admin (demo)") {
   assertCapability("review_grievance");
+  const current = load().grievances.find((x) => x.id === id);
+  if (!current) return;
+  const prev = current.pipeline_status;
+  if (prev === next) return;
+  if (!canTransition(prev, next)) {
+    throw new PipelineTransitionError(prev, next);
+  }
   mutateDemo((s) => {
     const g = s.grievances.find((x) => x.id === id);
     if (!g) return s;
-    const prev = g.pipeline_status;
-    if (prev === next) return s;
     const now = new Date().toISOString();
     const updated: DemoGrievance = {
       ...g,
@@ -449,3 +483,4 @@ export function setPipelineStatus(id: string, next: PipelineStatus, note = "", r
     };
   });
 }
+
