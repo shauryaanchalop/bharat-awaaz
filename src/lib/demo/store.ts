@@ -71,6 +71,13 @@ export type DemoTemplate = {
   created_at: string;
 };
 
+export type DemoAuditMeta = {
+  prev_status?: PipelineStatus | null;
+  next_status?: PipelineStatus | null;
+  reviewer?: string;
+  note?: string;
+};
+
 export type DemoAudit = {
   id: string;
   user_id: string;
@@ -78,6 +85,7 @@ export type DemoAudit = {
   action: string;
   detail: string;
   created_at: string;
+  meta?: DemoAuditMeta;
 };
 
 export type DemoStore = {
