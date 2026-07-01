@@ -331,22 +331,49 @@ function AdminPage() {
           <Card className="p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted text-left"><tr><th className="p-3">Action</th><th className="p-3">Detail</th><th className="p-3">Citizen</th><th className="p-3">Time</th></tr></thead>
+                <thead className="bg-muted text-left">
+                  <tr>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Change</th>
+                    <th className="p-3">Reviewer</th>
+                    <th className="p-3">Citizen</th>
+                    <th className="p-3">Note</th>
+                    <th className="p-3">Time</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {store.audit.slice(0, 100).map((a) => (
-                    <tr key={a.id} className="border-t">
-                      <td className="p-3 font-medium text-xs uppercase tracking-wider">{a.action}</td>
-                      <td className="p-3 text-xs">{a.detail}</td>
-                      <td className="p-3 text-xs text-muted-foreground">{userById[a.user_id]?.display_name ?? "—"}</td>
-                      <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {store.audit.slice(0, 100).map((a) => {
+                    const isPipeline = a.action.startsWith("pipeline_");
+                    const prev = a.meta?.prev_status ?? null;
+                    const next = a.meta?.next_status ?? null;
+                    return (
+                      <tr key={a.id} className="border-t align-top">
+                        <td className="p-3 font-medium text-xs uppercase tracking-wider whitespace-nowrap">{a.action}</td>
+                        <td className="p-3 text-xs">
+                          {isPipeline && next ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <PipelinePill status={prev} />
+                              <span className="text-muted-foreground">→</span>
+                              <PipelinePill status={next} />
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{a.detail}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-xs">{a.meta?.reviewer ?? (isPipeline ? "—" : "")}</td>
+                        <td className="p-3 text-xs text-muted-foreground">{userById[a.user_id]?.display_name ?? "—"}</td>
+                        <td className="p-3 text-xs text-muted-foreground italic max-w-xs truncate">{a.meta?.note ?? ""}</td>
+                        <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </Card>
         </TabsContent>
       </Tabs>
+
 
       <ReviewDialog
         target={reviewTarget}
