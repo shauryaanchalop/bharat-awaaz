@@ -12,6 +12,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw, Inbox, Loader2, CheckCheck, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
+import { useServerFn } from "@tanstack/react-start";
+import { setGrievancePipeline, reviewGrievanceServer } from "@/lib/admin/grievances.functions";
+
+// Best-effort server persistence: demo grievance IDs live in localStorage and
+// are not present in the real `grievances` table, so a "grievance not found"
+// or "Unauthorized" is expected in demo mode and we swallow it silently. Any
+// other failure (invalid transition, forbidden, network) surfaces as a toast
+// so admins running against real data see the exact reason.
+function reportServerPersistError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/not found|Unauthorized|No authorization/i.test(msg)) {
+    console.info("[admin] server persist skipped:", msg);
+    return;
+  }
+  toast.error("Server persist failed", { description: msg });
+}
+
 
 const PIPELINE_META: Record<PipelineStatus, { icon: typeof Inbox; cls: string }> = {
   received: { icon: Inbox, cls: "text-sky-600 border-sky-500/40 bg-sky-500/10" },
@@ -41,6 +58,9 @@ function AdminPage() {
   const store = useDemoStore();
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
+  const persistPipeline = useServerFn(setGrievancePipeline);
+  const persistReview = useServerFn(reviewGrievanceServer);
+
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
 
@@ -181,9 +201,12 @@ function AdminPage() {
                             <Select
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
+                                const next = v as PipelineStatus;
                                 try {
-                                  setPipelineStatus(g.id, v as PipelineStatus);
-                                  toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                                  setPipelineStatus(g.id, next);
+                                  toast.success(`Marked ${pipelineLabel(next)}`, { description: g.subject.slice(0, 60) });
+                                  persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
+                                    .catch(reportServerPersistError);
                                 } catch (err) {
                                   if (err instanceof PipelineTransitionError) {
                                     toast.error("Invalid transition", { description: err.message });
@@ -192,6 +215,7 @@ function AdminPage() {
                                   }
                                 }
                               }}
+
                             >
                               <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Set status…" /></SelectTrigger>
                               <SelectContent>
@@ -319,12 +343,22 @@ function AdminPage() {
         </TabsContent>
       </Tabs>
 
-      <ReviewDialog target={reviewTarget} onClose={() => setReviewTarget(null)} citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined} />
+      <ReviewDialog
+        target={reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        citizenName={reviewTarget ? userById[reviewTarget.user_id]?.display_name : undefined}
+        persistReview={persistReview}
+      />
     </div>
   );
 }
 
-function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance | null; onClose: () => void; citizenName?: string }) {
+function ReviewDialog({ target, onClose, citizenName, persistReview }: {
+  target: DemoGrievance | null;
+  onClose: () => void;
+  citizenName?: string;
+  persistReview: (opts: { data: { grievanceId: string; decision: "approved" | "rejected"; notes?: string; reviewer?: string } }) => Promise<unknown>;
+}) {
   const [notes, setNotes] = useState("");
   const [decision, setDecision] = useState<"approved" | "rejected" | null>(null);
 
@@ -341,8 +375,11 @@ function ReviewDialog({ target, onClose, citizenName }: { target: DemoGrievance 
       return;
     }
     reviewGrievance(target.id, d, notes);
+    persistReview({ data: { grievanceId: target.id, decision: d, notes, reviewer: "Admin (demo)" } })
+      .catch(reportServerPersistError);
     onClose();
   };
+
 
   return (
     <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>
