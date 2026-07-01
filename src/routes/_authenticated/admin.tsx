@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
+import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, allowedNextStatuses, PipelineTransitionError, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
