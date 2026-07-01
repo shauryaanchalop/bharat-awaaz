@@ -192,7 +192,10 @@ function AdminPage() {
                 <thead className="bg-muted text-left"><tr><th className="p-3">Subject</th><th className="p-3">Citizen</th><th className="p-3">Ministry</th><th className="p-3">Status</th><th className="p-3">Pipeline</th><th className="p-3">Review</th><th className="p-3">Created</th><th className="p-3 text-right">Action</th></tr></thead>
                 <tbody>
                   {visibleGrievances.map((g) => (
-                    <tr key={g.id} className="border-t align-top">
+                    <tr
+                      key={g.id}
+                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""}`}
+                    >
                       <td className="p-3 font-medium max-w-sm">
                         <div className="truncate">{g.subject}</div>
                         {g.review_notes && <div className="text-xs text-muted-foreground mt-1 italic">"{g.review_notes}"</div>}
