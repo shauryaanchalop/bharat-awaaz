@@ -12,6 +12,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Shield, RotateCcw, CheckCircle2, XCircle, RefreshCw, Inbox, Loader2, CheckCheck, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
+import { useServerFn } from "@tanstack/react-start";
+import { setGrievancePipeline, reviewGrievanceServer } from "@/lib/admin/grievances.functions";
+
+// Best-effort server persistence: demo grievance IDs live in localStorage and
+// are not present in the real `grievances` table, so a "grievance not found"
+// or "Unauthorized" is expected in demo mode and we swallow it silently. Any
+// other failure (invalid transition, forbidden, network) surfaces as a toast
+// so admins running against real data see the exact reason.
+function reportServerPersistError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/not found|Unauthorized|No authorization/i.test(msg)) {
+    console.info("[admin] server persist skipped:", msg);
+    return;
+  }
+  toast.error("Server persist failed", { description: msg });
+}
+
 
 const PIPELINE_META: Record<PipelineStatus, { icon: typeof Inbox; cls: string }> = {
   received: { icon: Inbox, cls: "text-sky-600 border-sky-500/40 bg-sky-500/10" },
