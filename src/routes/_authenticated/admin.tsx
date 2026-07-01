@@ -203,9 +203,13 @@ function AdminPage() {
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
                                 const next = v as PipelineStatus;
+                                const prev = g.pipeline_status;
                                 try {
                                   setPipelineStatus(g.id, next);
-                                  toast.success(`Marked ${pipelineLabel(next)}`, { description: g.subject.slice(0, 60) });
+                                  toast.success(`Marked ${pipelineLabel(next)}`, {
+                                    description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
+                                    action: { label: "View audit", onClick: () => setActiveTab("audit") },
+                                  });
                                   persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
                                     .catch(reportServerPersistError);
                                 } catch (err) {
