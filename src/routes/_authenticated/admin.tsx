@@ -201,9 +201,12 @@ function AdminPage() {
                             <Select
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
+                                const next = v as PipelineStatus;
                                 try {
-                                  setPipelineStatus(g.id, v as PipelineStatus);
-                                  toast.success(`Marked ${pipelineLabel(v as PipelineStatus)}`, { description: g.subject.slice(0, 60) });
+                                  setPipelineStatus(g.id, next);
+                                  toast.success(`Marked ${pipelineLabel(next)}`, { description: g.subject.slice(0, 60) });
+                                  persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
+                                    .catch(reportServerPersistError);
                                 } catch (err) {
                                   if (err instanceof PipelineTransitionError) {
                                     toast.error("Invalid transition", { description: err.message });
@@ -212,6 +215,7 @@ function AdminPage() {
                                   }
                                 }
                               }}
+
                             >
                               <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Set status…" /></SelectTrigger>
                               <SelectContent>
