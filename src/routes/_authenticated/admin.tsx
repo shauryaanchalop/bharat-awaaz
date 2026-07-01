@@ -59,6 +59,11 @@ function AdminPage() {
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
   const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
+  const [flashIds, setFlashIds] = useState<Record<string, number>>({});
+  const flashRow = (id: string) => {
+    setFlashIds((m) => ({ ...m, [id]: Date.now() }));
+    window.setTimeout(() => setFlashIds((m) => { const n = { ...m }; delete n[id]; return n; }), 2200);
+  };
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
 
