@@ -63,8 +63,15 @@ export type Database = {
           ministry: string | null
           normalised_payload: Json | null
           payload: Json
+          pipeline_status: string | null
+          pipeline_updated_at: string | null
+          pipeline_updated_by: string | null
           priority: number
           registration_id: string | null
+          review_decision: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewer: string | null
           status: string
           subject: string
           submitted_at: string | null
@@ -82,8 +89,15 @@ export type Database = {
           ministry?: string | null
           normalised_payload?: Json | null
           payload?: Json
+          pipeline_status?: string | null
+          pipeline_updated_at?: string | null
+          pipeline_updated_by?: string | null
           priority?: number
           registration_id?: string | null
+          review_decision?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewer?: string | null
           status?: string
           subject: string
           submitted_at?: string | null
@@ -101,8 +115,15 @@ export type Database = {
           ministry?: string | null
           normalised_payload?: Json | null
           payload?: Json
+          pipeline_status?: string | null
+          pipeline_updated_at?: string | null
+          pipeline_updated_by?: string | null
           priority?: number
           registration_id?: string | null
+          review_decision?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewer?: string | null
           status?: string
           subject?: string
           submitted_at?: string | null
@@ -264,6 +285,86 @@ export type Database = {
       }
     }
     Functions: {
+      admin_review_grievance: {
+        Args: {
+          _decision: string
+          _grievance_id: string
+          _notes?: string
+          _reviewer?: string
+        }
+        Returns: {
+          attempts: number
+          created_at: string
+          description: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          ministry: string | null
+          normalised_payload: Json | null
+          payload: Json
+          pipeline_status: string | null
+          pipeline_updated_at: string | null
+          pipeline_updated_by: string | null
+          priority: number
+          registration_id: string | null
+          review_decision: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewer: string | null
+          status: string
+          subject: string
+          submitted_at: string | null
+          updated_at: string
+          user_id: string
+          validation_issues: Json | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "grievances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_set_pipeline_status: {
+        Args: {
+          _grievance_id: string
+          _next: string
+          _note?: string
+          _reviewer?: string
+        }
+        Returns: {
+          attempts: number
+          created_at: string
+          description: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          ministry: string | null
+          normalised_payload: Json | null
+          payload: Json
+          pipeline_status: string | null
+          pipeline_updated_at: string | null
+          pipeline_updated_by: string | null
+          priority: number
+          registration_id: string | null
+          review_decision: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewer: string | null
+          status: string
+          subject: string
+          submitted_at: string | null
+          updated_at: string
+          user_id: string
+          validation_issues: Json | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "grievances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_impact_stats: {
         Args: never
         Returns: {
