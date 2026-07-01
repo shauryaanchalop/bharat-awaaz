@@ -58,6 +58,9 @@ function AdminPage() {
   const store = useDemoStore();
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
+  const persistPipeline = useServerFn(setGrievancePipeline);
+  const persistReview = useServerFn(reviewGrievanceServer);
+
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
 
