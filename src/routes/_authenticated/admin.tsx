@@ -58,6 +58,7 @@ function AdminPage() {
   const store = useDemoStore();
   const [reviewTarget, setReviewTarget] = useState<DemoGrievance | null>(null);
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
+  const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
 
