@@ -483,6 +483,12 @@ export function setPipelineStatus(id: string, next: PipelineStatus, note = "", r
       action: `pipeline_${next}`,
       detail: detailBits.join(" — "),
       created_at: now,
+      meta: {
+        prev_status: prev,
+        next_status: next,
+        reviewer,
+        note: note.trim() || undefined,
+      },
     };
     return {
       ...s,
