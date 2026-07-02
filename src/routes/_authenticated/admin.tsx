@@ -1,7 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, allowedNextStatuses, PipelineTransitionError, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
+import {
+  useDemoStore,
+  resetDemo,
+  reviewGrievance,
+  clearReview,
+  setPipelineStatus,
+  revertPipelineStatus,
+  upsertGrievanceFromServer,
+  appendAuditFromServer,
+  pipelineLabel,
+  PIPELINE_STATUSES,
+  allowedNextStatuses,
+  PipelineTransitionError,
+  type DemoGrievance,
+  type PipelineStatus,
+} from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +29,7 @@ import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
 import { useServerFn } from "@tanstack/react-start";
 import { setGrievancePipeline, reviewGrievanceServer } from "@/lib/admin/grievances.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 // Best-effort server persistence: demo grievance IDs live in localStorage and
 // are not present in the real `grievances` table, so a "grievance not found"
@@ -60,12 +76,66 @@ function AdminPage() {
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
   const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
+  const [flashAuditIds, setFlashAuditIds] = useState<Record<string, number>>({});
+  const [pendingIds, setPendingIds] = useState<Record<string, true>>({});
   const flashRow = (id: string) => {
     setFlashIds((m) => ({ ...m, [id]: Date.now() }));
     window.setTimeout(() => setFlashIds((m) => { const n = { ...m }; delete n[id]; return n; }), 2200);
   };
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
+
+  // Auto-flash any audit entry that appears since last render (covers both
+  // local mutations and realtime inserts) and flash the grievance row it
+  // references so admins see the change without switching tabs.
+  const prevAuditIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const currentIds = new Set(store.audit.map((a) => a.id));
+    if (prevAuditIdsRef.current === null) {
+      prevAuditIdsRef.current = currentIds;
+      return;
+    }
+    const fresh = store.audit.filter((a) => !prevAuditIdsRef.current!.has(a.id));
+    prevAuditIdsRef.current = currentIds;
+    if (!fresh.length) return;
+    setFlashAuditIds((m) => {
+      const n = { ...m };
+      fresh.forEach((a) => { n[a.id] = Date.now(); });
+      return n;
+    });
+    fresh.forEach((a) => { if (a.grievance_id) flashRow(a.grievance_id); });
+    const ids = fresh.map((a) => a.id);
+    window.setTimeout(() => {
+      setFlashAuditIds((m) => { const n = { ...m }; ids.forEach((id) => delete n[id]); return n; });
+    }, 2200);
+  }, [store.audit]);
+
+  // Realtime: mirror server-side grievance updates and audit inserts into
+  // the demo store so the Admin table and Audit tab reflect backend changes
+  // (from other admins, background jobs, or direct DB writes) live.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const channel = supabase
+      .channel("admin-grievances-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "grievances" },
+        (payload) => {
+          const row = payload.new as { id?: string } | null;
+          if (row?.id) upsertGrievanceFromServer(row as Parameters<typeof upsertGrievanceFromServer>[0]);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "audit_events" },
+        (payload) => {
+          const row = payload.new as Parameters<typeof appendAuditFromServer>[0] | null;
+          if (row?.id) appendAuditFromServer(row);
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isAdmin]);
 
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
@@ -194,7 +264,7 @@ function AdminPage() {
                   {visibleGrievances.map((g) => (
                     <tr
                       key={g.id}
-                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""}`}
+                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""} ${pendingIds[g.id] ? "opacity-90" : ""}`}
                     >
                       <td className="p-3 font-medium max-w-sm">
                         <div className="truncate">{g.subject}</div>
@@ -206,28 +276,55 @@ function AdminPage() {
                       <td className="p-3 min-w-[180px]">
                         {g.status === "submitted" ? (
                           <div className="space-y-1.5">
-                            <PipelinePill status={g.pipeline_status} />
+                            <div className="flex items-center gap-1.5">
+                              <PipelinePill status={g.pipeline_status} />
+                              {pendingIds[g.id] && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" aria-label="Saving…" />}
+                            </div>
                             <Select
+                              disabled={!!pendingIds[g.id]}
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
                                 const next = v as PipelineStatus;
-                                const prev = g.pipeline_status;
+                                const prevLabel = g.pipeline_status;
+                                let result: ReturnType<typeof setPipelineStatus> = null;
                                 try {
-                                  setPipelineStatus(g.id, next);
-                                  flashRow(g.id);
-                                  toast.success(`Marked ${pipelineLabel(next)}`, {
-                                    description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
-                                    action: { label: "View audit", onClick: () => setActiveTab("audit") },
-                                  });
-                                  persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
-                                    .catch(reportServerPersistError);
+                                  result = setPipelineStatus(g.id, next);
                                 } catch (err) {
                                   if (err instanceof PipelineTransitionError) {
                                     toast.error("Invalid transition", { description: err.message });
                                   } else {
                                     toast.error("Update failed", { description: err instanceof Error ? err.message : String(err) });
                                   }
+                                  return;
                                 }
+                                if (!result) return;
+                                flashRow(g.id);
+                                toast.success(`Marked ${pipelineLabel(next)}`, {
+                                  description: `${prevLabel ? pipelineLabel(prevLabel) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
+                                  action: { label: "View audit", onClick: () => setActiveTab("audit") },
+                                });
+                                setPendingIds((m) => ({ ...m, [g.id]: true }));
+                                const { auditId, prev } = result;
+                                persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
+                                  .then((row) => {
+                                    if (row && typeof row === "object" && "id" in row) {
+                                      upsertGrievanceFromServer(row as Parameters<typeof upsertGrievanceFromServer>[0]);
+                                    }
+                                  })
+                                  .catch((err) => {
+                                    const msg = err instanceof Error ? err.message : String(err);
+                                    if (/not found|Unauthorized|No authorization/i.test(msg)) {
+                                      // Demo grievance without a real DB row — keep the optimistic update.
+                                      console.info("[admin] server persist skipped:", msg);
+                                      return;
+                                    }
+                                    // Real rejection (invalid transition, forbidden, network): roll back.
+                                    revertPipelineStatus(g.id, prev, auditId);
+                                    toast.error("Server rejected — reverted", { description: msg });
+                                  })
+                                  .finally(() => {
+                                    setPendingIds((m) => { const n = { ...m }; delete n[g.id]; return n; });
+                                  });
                               }}
 
                             >
@@ -258,6 +355,7 @@ function AdminPage() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
+
                       <td className="p-3">
                         {g.review_decision === "approved" && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
                         {g.review_decision === "rejected" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>}
@@ -356,7 +454,7 @@ function AdminPage() {
                     const prev = a.meta?.prev_status ?? null;
                     const next = a.meta?.next_status ?? null;
                     return (
-                      <tr key={a.id} className="border-t align-top">
+                      <tr key={a.id} className={`border-t align-top transition-colors duration-1000 ${flashAuditIds[a.id] ? "bg-primary/10 animate-fade-in" : ""}`}>
                         <td className="p-3 font-medium text-xs uppercase tracking-wider whitespace-nowrap">{a.action}</td>
                         <td className="p-3 text-xs">
                           {isPipeline && next ? (
