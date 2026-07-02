@@ -3,8 +3,6 @@
 > Speak once. Filed everywhere.  
 > A voice-first AI grievance & welfare-scheme filing platform for every Indian, in every language.
 
-[![Built with Lovable](https://lovable.dev/built-with-lovable.svg)](https://lovable.dev)
-
 ---
 
 ## What is Bharat-Awaaz?
@@ -21,7 +19,7 @@ Bharat-Awaaz lets citizens **speak in their native Indian language** to file gri
 
 ## Live Demo
 
-- **Published:** [bharat-awaaz.lovable.app](https://bharat-awaaz.lovable.app)
+- **Published:** [bharat-awaaz.vercel.app](https://bharat-awaaz.vercel.app)
 
 ---
 
