@@ -76,12 +76,66 @@ function AdminPage() {
   const [grievanceFilter, setGrievanceFilter] = useState<"all" | "pending_review" | "approved" | "rejected">("all");
   const [activeTab, setActiveTab] = useState<"grievances" | "users" | "templates" | "audit">("grievances");
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
+  const [flashAuditIds, setFlashAuditIds] = useState<Record<string, number>>({});
+  const [pendingIds, setPendingIds] = useState<Record<string, true>>({});
   const flashRow = (id: string) => {
     setFlashIds((m) => ({ ...m, [id]: Date.now() }));
     window.setTimeout(() => setFlashIds((m) => { const n = { ...m }; delete n[id]; return n; }), 2200);
   };
   const persistPipeline = useServerFn(setGrievancePipeline);
   const persistReview = useServerFn(reviewGrievanceServer);
+
+  // Auto-flash any audit entry that appears since last render (covers both
+  // local mutations and realtime inserts) and flash the grievance row it
+  // references so admins see the change without switching tabs.
+  const prevAuditIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const currentIds = new Set(store.audit.map((a) => a.id));
+    if (prevAuditIdsRef.current === null) {
+      prevAuditIdsRef.current = currentIds;
+      return;
+    }
+    const fresh = store.audit.filter((a) => !prevAuditIdsRef.current!.has(a.id));
+    prevAuditIdsRef.current = currentIds;
+    if (!fresh.length) return;
+    setFlashAuditIds((m) => {
+      const n = { ...m };
+      fresh.forEach((a) => { n[a.id] = Date.now(); });
+      return n;
+    });
+    fresh.forEach((a) => { if (a.grievance_id) flashRow(a.grievance_id); });
+    const ids = fresh.map((a) => a.id);
+    window.setTimeout(() => {
+      setFlashAuditIds((m) => { const n = { ...m }; ids.forEach((id) => delete n[id]); return n; });
+    }, 2200);
+  }, [store.audit]);
+
+  // Realtime: mirror server-side grievance updates and audit inserts into
+  // the demo store so the Admin table and Audit tab reflect backend changes
+  // (from other admins, background jobs, or direct DB writes) live.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const channel = supabase
+      .channel("admin-grievances-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "grievances" },
+        (payload) => {
+          const row = payload.new as { id?: string } | null;
+          if (row?.id) upsertGrievanceFromServer(row as Parameters<typeof upsertGrievanceFromServer>[0]);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "audit_events" },
+        (payload) => {
+          const row = payload.new as Parameters<typeof appendAuditFromServer>[0] | null;
+          if (row?.id) appendAuditFromServer(row);
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isAdmin]);
 
 
   const userById = useMemo(() => Object.fromEntries(store.profiles.map((p) => [p.id, p])), [store.profiles]);
