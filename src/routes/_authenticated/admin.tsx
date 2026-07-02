@@ -1,7 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useIsAdmin } from "@/lib/auth/hooks";
-import { useDemoStore, resetDemo, reviewGrievance, clearReview, setPipelineStatus, pipelineLabel, PIPELINE_STATUSES, allowedNextStatuses, PipelineTransitionError, type DemoGrievance, type PipelineStatus } from "@/lib/demo/store";
+import {
+  useDemoStore,
+  resetDemo,
+  reviewGrievance,
+  clearReview,
+  setPipelineStatus,
+  revertPipelineStatus,
+  upsertGrievanceFromServer,
+  appendAuditFromServer,
+  pipelineLabel,
+  PIPELINE_STATUSES,
+  allowedNextStatuses,
+  PipelineTransitionError,
+  type DemoGrievance,
+  type PipelineStatus,
+} from "@/lib/demo/store";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +29,7 @@ import { toast } from "sonner";
 import { StatusBadge } from "./dashboard";
 import { useServerFn } from "@tanstack/react-start";
 import { setGrievancePipeline, reviewGrievanceServer } from "@/lib/admin/grievances.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 // Best-effort server persistence: demo grievance IDs live in localStorage and
 // are not present in the real `grievances` table, so a "grievance not found"

@@ -453,15 +453,32 @@ export class PipelineTransitionError extends Error {
   }
 }
 
-export function setPipelineStatus(id: string, next: PipelineStatus, note = "", reviewer = "Admin (demo)") {
+export type PipelineSnapshot = {
+  pipeline_status: PipelineStatus | null;
+  pipeline_updated_at: string | null;
+  pipeline_updated_by: string | null;
+};
+
+export function setPipelineStatus(
+  id: string,
+  next: PipelineStatus,
+  note = "",
+  reviewer = "Admin (demo)",
+): { auditId: string; prev: PipelineSnapshot } | null {
   assertCapability("review_grievance");
   const current = load().grievances.find((x) => x.id === id);
-  if (!current) return;
+  if (!current) return null;
   const prev = current.pipeline_status;
-  if (prev === next) return;
+  if (prev === next) return null;
   if (!canTransition(prev, next)) {
     throw new PipelineTransitionError(prev, next);
   }
+  const auditId = rid("a_");
+  const snapshot: PipelineSnapshot = {
+    pipeline_status: current.pipeline_status,
+    pipeline_updated_at: current.pipeline_updated_at,
+    pipeline_updated_by: current.pipeline_updated_by,
+  };
   mutateDemo((s) => {
     const g = s.grievances.find((x) => x.id === id);
     if (!g) return s;
@@ -477,7 +494,7 @@ export function setPipelineStatus(id: string, next: PipelineStatus, note = "", r
     ];
     if (note.trim()) detailBits.push(`"${note.trim()}"`);
     const audit: DemoAudit = {
-      id: rid("a_"),
+      id: auditId,
       user_id: g.user_id,
       grievance_id: g.id,
       action: `pipeline_${next}`,
@@ -496,5 +513,88 @@ export function setPipelineStatus(id: string, next: PipelineStatus, note = "", r
       audit: [audit, ...s.audit],
     };
   });
+  return { auditId, prev: snapshot };
 }
+
+// Roll back an optimistic pipeline change: restore the grievance snapshot and
+// drop the audit entry that was inserted for the failed transition.
+export function revertPipelineStatus(id: string, prev: PipelineSnapshot, auditId?: string) {
+  mutateDemo((s) => ({
+    ...s,
+    grievances: s.grievances.map((g) => (g.id === id ? { ...g, ...prev } : g)),
+    audit: auditId ? s.audit.filter((a) => a.id !== auditId) : s.audit,
+  }));
+}
+
+// Merge an authoritative grievance row (from realtime or a server-fn response)
+// into the demo store. Only applies when the id already exists locally so we
+// don't pollute the demo dataset with unrelated production rows.
+export function upsertGrievanceFromServer(row: {
+  id: string;
+  pipeline_status?: PipelineStatus | null;
+  pipeline_updated_at?: string | null;
+  pipeline_updated_by?: string | null;
+  review_decision?: ReviewDecision | null;
+  review_notes?: string | null;
+  reviewed_at?: string | null;
+  reviewer?: string | null;
+}) {
+  mutateDemo((s) => {
+    if (!s.grievances.some((g) => g.id === row.id)) return s;
+    return {
+      ...s,
+      grievances: s.grievances.map((g) =>
+        g.id === row.id
+          ? {
+              ...g,
+              pipeline_status: row.pipeline_status ?? g.pipeline_status,
+              pipeline_updated_at: row.pipeline_updated_at ?? g.pipeline_updated_at,
+              pipeline_updated_by: row.pipeline_updated_by ?? g.pipeline_updated_by,
+              review_decision: row.review_decision ?? g.review_decision,
+              review_notes: row.review_notes ?? g.review_notes,
+              reviewed_at: row.reviewed_at ?? g.reviewed_at,
+              reviewer: row.reviewer ?? g.reviewer,
+            }
+          : g,
+      ),
+    };
+  });
+}
+
+// Append a realtime audit event, de-duplicating by id. Parses pipeline meta
+// from the action name so the Audit tab can render prev→next chips for
+// server-originated events too.
+export function appendAuditFromServer(row: {
+  id: string;
+  user_id: string;
+  grievance_id: string | null;
+  action: string;
+  detail: string | null;
+  created_at: string;
+}) {
+  mutateDemo((s) => {
+    if (s.audit.some((a) => a.id === row.id)) return s;
+    let meta: DemoAuditMeta | undefined;
+    if (row.action.startsWith("pipeline_")) {
+      const next = row.action.slice("pipeline_".length) as PipelineStatus;
+      meta = { next_status: next };
+    }
+    return {
+      ...s,
+      audit: [
+        {
+          id: row.id,
+          user_id: row.user_id,
+          grievance_id: row.grievance_id,
+          action: row.action,
+          detail: row.detail ?? "",
+          created_at: row.created_at,
+          meta,
+        },
+        ...s.audit,
+      ],
+    };
+  });
+}
+
 
