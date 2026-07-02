@@ -454,7 +454,7 @@ function AdminPage() {
                     const prev = a.meta?.prev_status ?? null;
                     const next = a.meta?.next_status ?? null;
                     return (
-                      <tr key={a.id} className="border-t align-top">
+                      <tr key={a.id} className={`border-t align-top transition-colors duration-1000 ${flashAuditIds[a.id] ? "bg-primary/10 animate-fade-in" : ""}`}>
                         <td className="p-3 font-medium text-xs uppercase tracking-wider whitespace-nowrap">{a.action}</td>
                         <td className="p-3 text-xs">
                           {isPipeline && next ? (
