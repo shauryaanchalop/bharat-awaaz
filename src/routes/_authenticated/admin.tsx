@@ -264,7 +264,7 @@ function AdminPage() {
                   {visibleGrievances.map((g) => (
                     <tr
                       key={g.id}
-                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""}`}
+                      className={`border-t align-top transition-colors duration-1000 ${flashIds[g.id] ? "bg-primary/10" : ""} ${pendingIds[g.id] ? "opacity-90" : ""}`}
                     >
                       <td className="p-3 font-medium max-w-sm">
                         <div className="truncate">{g.subject}</div>
@@ -276,28 +276,55 @@ function AdminPage() {
                       <td className="p-3 min-w-[180px]">
                         {g.status === "submitted" ? (
                           <div className="space-y-1.5">
-                            <PipelinePill status={g.pipeline_status} />
+                            <div className="flex items-center gap-1.5">
+                              <PipelinePill status={g.pipeline_status} />
+                              {pendingIds[g.id] && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" aria-label="Saving…" />}
+                            </div>
                             <Select
+                              disabled={!!pendingIds[g.id]}
                               value={g.pipeline_status ?? undefined}
                               onValueChange={(v) => {
                                 const next = v as PipelineStatus;
-                                const prev = g.pipeline_status;
+                                const prevLabel = g.pipeline_status;
+                                let result: ReturnType<typeof setPipelineStatus> = null;
                                 try {
-                                  setPipelineStatus(g.id, next);
-                                  flashRow(g.id);
-                                  toast.success(`Marked ${pipelineLabel(next)}`, {
-                                    description: `${prev ? pipelineLabel(prev) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
-                                    action: { label: "View audit", onClick: () => setActiveTab("audit") },
-                                  });
-                                  persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
-                                    .catch(reportServerPersistError);
+                                  result = setPipelineStatus(g.id, next);
                                 } catch (err) {
                                   if (err instanceof PipelineTransitionError) {
                                     toast.error("Invalid transition", { description: err.message });
                                   } else {
                                     toast.error("Update failed", { description: err instanceof Error ? err.message : String(err) });
                                   }
+                                  return;
                                 }
+                                if (!result) return;
+                                flashRow(g.id);
+                                toast.success(`Marked ${pipelineLabel(next)}`, {
+                                  description: `${prevLabel ? pipelineLabel(prevLabel) : "—"} → ${pipelineLabel(next)} · by Admin (demo)`,
+                                  action: { label: "View audit", onClick: () => setActiveTab("audit") },
+                                });
+                                setPendingIds((m) => ({ ...m, [g.id]: true }));
+                                const { auditId, prev } = result;
+                                persistPipeline({ data: { grievanceId: g.id, next, reviewer: "Admin (demo)" } })
+                                  .then((row) => {
+                                    if (row && typeof row === "object" && "id" in row) {
+                                      upsertGrievanceFromServer(row as Parameters<typeof upsertGrievanceFromServer>[0]);
+                                    }
+                                  })
+                                  .catch((err) => {
+                                    const msg = err instanceof Error ? err.message : String(err);
+                                    if (/not found|Unauthorized|No authorization/i.test(msg)) {
+                                      // Demo grievance without a real DB row — keep the optimistic update.
+                                      console.info("[admin] server persist skipped:", msg);
+                                      return;
+                                    }
+                                    // Real rejection (invalid transition, forbidden, network): roll back.
+                                    revertPipelineStatus(g.id, prev, auditId);
+                                    toast.error("Server rejected — reverted", { description: msg });
+                                  })
+                                  .finally(() => {
+                                    setPendingIds((m) => { const n = { ...m }; delete n[g.id]; return n; });
+                                  });
                               }}
 
                             >
@@ -328,6 +355,7 @@ function AdminPage() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
+
                       <td className="p-3">
                         {g.review_decision === "approved" && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30"><CheckCircle2 className="w-3 h-3 mr-1" />Approved</Badge>}
                         {g.review_decision === "rejected" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>}
